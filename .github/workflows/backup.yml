@@ -1,0 +1,144 @@
+name: Backup Supabase DB
+
+on:
+
+  schedule:
+
+    - cron: "0 2 * * *"   # ogni notte alle 02:00 UTC
+
+  workflow_dispatch:        # avvio manuale dalla dashboard GitHub
+
+env:
+
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+
+  backup:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # 1. Esporta ogni tabella via API REST Supabase → JSON
+
+      - name: Export tables via Supabase REST API
+
+        env:
+
+          SUPABASE_URL: "https://xgzmjxththubvpfwgsnu.supabase.co"
+
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+        run: |
+
+          mkdir -p backup
+
+          TABLES=("events" "profiles" "activity_log" "telegram_subscriptions" "app_config")
+
+          for TABLE in "${TABLES[@]}"; do
+
+            echo "Esportando $TABLE..."
+
+            curl -s \
+
+              -H "apikey: ${SUPABASE_KEY}" \
+
+              -H "Authorization: Bearer ${SUPABASE_KEY}" \
+
+              -H "Accept: application/json" \
+
+              "${SUPABASE_URL}/rest/v1/${TABLE}?select=*" \
+
+              -o "backup/${TABLE}.json"
+
+            echo "  → $(wc -l < backup/${TABLE}.json) bytes"
+
+          done
+
+          # Salva anche timestamp e metadati
+
+          echo "{\"exported_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"project\": \"xgzmjxththubvpfwgsnu\"}" \
+
+            > backup/meta.json
+
+      # 2. Comprimi tutto in un archivio
+
+      - name: Create archive
+
+        run: |
+
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+
+          tar -czf "backup_${TIMESTAMP}.tar.gz" backup/
+
+          echo "BACKUP_FILE=backup_${TIMESTAMP}.tar.gz" >> $GITHUB_ENV
+
+      # 3. Cifra l'archivio
+
+      - name: Encrypt backup
+
+        run: |
+
+          gpg --batch --yes \
+
+            --passphrase "${{ secrets.BACKUP_ENCRYPTION_KEY }}" \
+
+            --symmetric --cipher-algo AES256 \
+
+            "${{ env.BACKUP_FILE }}"
+
+          rm "${{ env.BACKUP_FILE }}"
+
+          echo "BACKUP_FILE=${{ env.BACKUP_FILE }}.gpg" >> $GITHUB_ENV
+
+      # 4. Checkout del repo dei backup
+
+      - name: Checkout backup repo
+
+        uses: actions/checkout@v4
+
+        with:
+
+          repository: rdvrdv-app/bacheca-backups
+
+          token: ${{ secrets.BACKUP_REPO_TOKEN }}
+
+          path: backup-repo
+
+      # 5. Committa il backup (mantieni solo gli ultimi 30)
+
+      - name: Commit backup
+
+        run: |
+
+          cp "${{ env.BACKUP_FILE }}" backup-repo/
+
+          cd backup-repo
+
+          ls -t backup_*.tar.gz.gpg 2>/dev/null | tail -n +31 | xargs -r rm
+
+          git config user.name  "GitHub Actions"
+
+          git config user.email "actions@github.com"
+
+          git add .
+
+          git commit -m "Backup: ${{ env.BACKUP_FILE }}" || echo "Nessuna modifica"
+
+          git push
+
+      # 6. Notifica Telegram in caso di errore
+
+      - name: Notify on failure
+
+        if: failure()
+
+        run: |
+
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+
+            -d chat_id="${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}" \
+
+            -d text="❌ Backup Bacheca FALLITO il $(date '+%d/%m/%Y alle %H:%M')"
+
