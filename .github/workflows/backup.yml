@@ -36,12 +36,15 @@ jobs:
           echo "BACKUP_FILE=backup_${TIMESTAMP}.tar.gz" >> $GITHUB_ENV
 
       - name: Encrypt backup
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
         run: |
+          echo "${BACKUP_ENCRYPTION_KEY}" > /tmp/passphrase.txt
           gpg --batch --yes \
-            --passphrase "${{ secrets.BACKUP_ENCRYPTION_KEY }}" \
+            --passphrase-file /tmp/passphrase.txt \
             --symmetric --cipher-algo AES256 \
             "${{ env.BACKUP_FILE }}"
-          rm "${{ env.BACKUP_FILE }}"
+          rm "${{ env.BACKUP_FILE }}" /tmp/passphrase.txt
           echo "BACKUP_FILE=${{ env.BACKUP_FILE }}.gpg" >> $GITHUB_ENV
 
       - name: Checkout backup repo
