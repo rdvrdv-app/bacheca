@@ -1192,10 +1192,26 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
 
 // ── Vote View ─────────────────────────────────────────────────
 function VoteView({ event, events, th, profile, user, onBack, onSubmit, saving }) {
-  const [sel, setSel] = useState([]);
+  const [sel, setSel]             = useState([]);
+  const [companions, setCompanions] = useState([]);
+  const [compInput, setCompInput]   = useState("");
   const e    = events.find(x => x.id===event.id) || event;
   const isM  = e.multi_select === true || e.multiSelect === true;
   const name = profile?.full_name || user?.email || "Utente";
+
+  const addCompanion = () => {
+    const n = compInput.trim();
+    if (!n) return;
+    setCompanions(p => [...p, n]);
+    setCompInput("");
+  };
+
+  const removeCompanion = (i) => setCompanions(p => p.filter((_, idx) => idx !== i));
+
+  const handleConfirm = () => {
+    if (!sel.length) return;
+    onSubmit([name, ...companions], sel);
+  };
 
   return (
     <div>
@@ -1215,9 +1231,51 @@ function VoteView({ event, events, th, profile, user, onBack, onSubmit, saving }
           </div>
         );
       })}
-      <button onClick={() => sel.length && onSubmit(name, sel)} disabled={saving || !sel.length}
-        style={{...primBtn(th),width:"100%",marginTop:8,opacity:saving?.6:1}}>
-        {saving ? "Salvataggio..." : "Conferma voto"}
+
+      {/* ── Accompagnatori ── */}
+      <div style={{...cardSt(th),marginTop:16,marginBottom:8,border:`1px solid ${th.border}`}}>
+        <div style={{fontSize:13,fontWeight:600,color:th.text,marginBottom:10}}>
+          👥 Accompagnatori
+          <span style={{fontWeight:400,color:th.sub,marginLeft:6,fontSize:12}}>
+            (opzionale — persone che vengono con te)
+          </span>
+        </div>
+        {companions.map((c, i) => (
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+            <div style={{flex:1,padding:"6px 10px",background:th.input,borderRadius:8,fontSize:13,color:th.text}}>
+              {c}
+              <span style={{fontSize:11,color:th.sub,marginLeft:6}}>con {name}</span>
+            </div>
+            <button onClick={() => removeCompanion(i)}
+              style={{background:"none",border:"none",cursor:"pointer",color:th.danger,fontSize:18,padding:"0 4px",lineHeight:1}}>
+              ×
+            </button>
+          </div>
+        ))}
+        <div style={{display:"flex",gap:8,marginTop:4}}>
+          <input
+            value={compInput}
+            onChange={ev => setCompInput(ev.target.value)}
+            onKeyDown={ev => ev.key==="Enter" && addCompanion()}
+            placeholder="Nome accompagnatore..."
+            style={{flex:1,padding:"8px 10px",borderRadius:8,border:`1px solid ${th.border}`,background:th.input,color:th.text,fontSize:14}}
+          />
+          <button onClick={addCompanion} disabled={!compInput.trim()}
+            style={{...primBtn(th),padding:"8px 14px",opacity:compInput.trim()?1:0.5}}>
+            + Aggiungi
+          </button>
+        </div>
+      </div>
+
+      {companions.length > 0 && (
+        <div style={{fontSize:12,color:th.sub,marginBottom:8,paddingLeft:4}}>
+          Verranno registrati {1 + companions.length} voti: <b>{name}</b> + {companions.join(", ")}
+        </div>
+      )}
+
+      <button onClick={handleConfirm} disabled={saving || !sel.length}
+        style={{...primBtn(th),width:"100%",marginTop:8,opacity:(saving||!sel.length)?0.6:1}}>
+        {saving ? "Salvataggio..." : companions.length > 0 ? `Conferma voto (${1+companions.length} persone)` : "Conferma voto"}
       </button>
     </div>
   );
@@ -1728,14 +1786,21 @@ function App() {
     showToast("✏️ Modifiche salvate!"); await loadEvents(); setView("event");
   };
 
-  const handleVote = async (voterName, sel) => {
+  const handleVote = async (voters, sel) => {
     const e = events.find(x => x.id===selEvent.id);
+    const voterList = Array.isArray(voters) ? voters : [voters];
     setSaving(true);
-    const { error } = await sb.rpc("cast_vote", { p_event_id:e.id, p_voter:voterName, p_options:sel });
+    for (const voter of voterList) {
+      const { error } = await sb.rpc("cast_vote", { p_event_id:e.id, p_voter:voter, p_options:sel });
+      if (error) { setSaving(false); return showToast("❌ " + error.message); }
+    }
     setSaving(false);
-    if (error) return showToast("❌ " + error.message);
-    await logActivity("Voto registrato", e, sel.join(", "));
-    showToast("✅ Voto registrato!"); await loadEvents(); setView("event");
+    const logNote = voterList.length > 1
+      ? `${voterList[0]} + ${voterList.slice(1).join(", ")} → ${sel.join(", ")}`
+      : sel.join(", ");
+    await logActivity("Voto registrato", e, logNote);
+    showToast(voterList.length > 1 ? `✅ ${voterList.length} voti registrati!` : "✅ Voto registrato!");
+    await loadEvents(); setView("event");
   };
 
   const handleCancelVote = async (id, voterName) => {
