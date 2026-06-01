@@ -1802,9 +1802,7 @@ function App() {
     const future = visibleEvents.filter(e => {
       if (!e.date) return true;
       const eventDate = new Date(e.date+"T00:00:00");
-      const deadlineDate = e.deadline ? new Date(e.deadline+"T00:00:00") : null;
       if (eventDate < oneDayAgo) return false;
-      if (deadlineDate && deadlineDate < today) return false;
       return true;
     });
     const past = visibleEvents.filter(e => !future.includes(e));
