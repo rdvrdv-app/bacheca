@@ -1025,6 +1025,7 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
       "Risultati sondaggio:",
       ...(e.options||[]).map(o => { const v = e.votes[o]||[]; return `• ${o}: ${v.length} vot${v.length===1?"o":"i"}${v.length>0?" ("+v.join(", ")+")":""}`; }),
       "", `👥 ${(e.participants||[]).length} partecipanti`,
+      "", "🗳️ Vota su: https://rdvrdv-app.github.io/bacheca/",
     ].filter(Boolean);
     navigator.clipboard?.writeText(lines.join("\n"));
     onToast("📋 Risultati copiati!");
