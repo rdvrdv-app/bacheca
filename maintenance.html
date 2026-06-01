@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bacheca — In manutenzione</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #1a1008;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+
+    /* ── Sfondo puntinato tipo sughero ── */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 20% 30%, #2e1a0a44 0%, transparent 60%),
+        radial-gradient(circle at 80% 70%, #3d2208 0%, transparent 50%);
+      background-color: #1a1008;
+      z-index: -1;
+    }
+
+    .scene {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 40px;
+    }
+
+    /* ── Bacheca ── */
+    .board {
+      position: relative;
+      width: min(480px, 90vw);
+      min-height: 300px;
+      background: #c8914a;
+      background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Ccircle cx='1' cy='1' r='0.6' fill='%23b07c38' opacity='0.4'/%3E%3Ccircle cx='3' cy='3' r='0.5' fill='%23d4a055' opacity='0.3'/%3E%3C/svg%3E");
+      border-radius: 12px;
+      border: 14px solid #5c3310;
+      box-shadow:
+        0 0 0 3px #3d2007,
+        0 20px 60px #00000088,
+        inset 0 0 30px #00000022;
+      padding: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── Angoli cornice ── */
+    .board::before, .board::after {
+      content: "";
+      position: absolute;
+      width: 20px; height: 20px;
+      background: #3d2007;
+      border-radius: 3px;
+    }
+    .board::before { top: -17px; left: -17px; }
+    .board::after  { bottom: -17px; right: -17px; }
+
+    /* ── Post-it che volano via ── */
+    .note {
+      position: absolute;
+      border-radius: 3px;
+      box-shadow: 2px 4px 10px #00000044;
+      opacity: 1;
+    }
+
+    .note-1 {
+      width: 90px; height: 90px;
+      background: #f9e44a;
+      top: 20px; left: 30px;
+      transform: rotate(-8deg);
+      animation: fly-away-1 0.6s ease-in 0.4s forwards;
+    }
+    .note-2 {
+      width: 110px; height: 75px;
+      background: #f87c7c;
+      top: 15px; right: 40px;
+      transform: rotate(5deg);
+      animation: fly-away-2 0.6s ease-in 0.8s forwards;
+    }
+    .note-3 {
+      width: 80px; height: 100px;
+      background: #7ec8f0;
+      bottom: 30px; left: 50px;
+      transform: rotate(3deg);
+      animation: fly-away-3 0.6s ease-in 1.1s forwards;
+    }
+    .note-4 {
+      width: 100px; height: 70px;
+      background: #a8e67a;
+      bottom: 25px; right: 35px;
+      transform: rotate(-6deg);
+      animation: fly-away-4 0.6s ease-in 1.4s forwards;
+    }
+    .note-5 {
+      width: 70px; height: 85px;
+      background: #f9d97a;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -60%) rotate(10deg);
+      animation: fly-away-5 0.6s ease-in 1.7s forwards;
+    }
+
+    /* Spilline sui post-it */
+    .note::after {
+      content: "📌";
+      position: absolute;
+      top: -8px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 16px;
+    }
+
+    @keyframes fly-away-1 {
+      to { transform: translate(-200px, -300px) rotate(-60deg) scale(0.3); opacity: 0; }
+    }
+    @keyframes fly-away-2 {
+      to { transform: translate(200px, -250px) rotate(80deg) scale(0.3); opacity: 0; }
+    }
+    @keyframes fly-away-3 {
+      to { transform: translate(-180px, 300px) rotate(-70deg) scale(0.3); opacity: 0; }
+    }
+    @keyframes fly-away-4 {
+      to { transform: translate(220px, 280px) rotate(90deg) scale(0.3); opacity: 0; }
+    }
+    @keyframes fly-away-5 {
+      to { transform: translate(-50%, -60%) translate(0, -350px) rotate(30deg) scale(0.2); opacity: 0; }
+    }
+
+    /* ── Messaggio centrale ── */
+    .message-card {
+      background: #fef08a;
+      border-radius: 4px;
+      padding: 28px 32px;
+      box-shadow: 3px 5px 16px #00000033;
+      text-align: center;
+      max-width: 300px;
+      position: relative;
+      opacity: 0;
+      transform: scale(0.8);
+      animation: appear 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 2.2s forwards;
+    }
+
+    /* Spillone del biglietto */
+    .message-card::before {
+      content: "📌";
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 24px;
+    }
+
+
+    @keyframes appear {
+      from { opacity: 0; transform: scale(0.8) translateY(10px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .message-text {
+      position: relative;
+      z-index: 1;
+      font-size: clamp(16px, 4vw, 20px);
+      line-height: 1.6;
+      color: #2a1a08;
+      font-weight: 600;
+      font-style: italic;
+    }
+
+    /* ── Titolo sotto ── */
+    .title {
+      color: #d4a055;
+      font-size: clamp(22px, 5vw, 32px);
+      font-weight: 800;
+      letter-spacing: 1px;
+      opacity: 0;
+      animation: fade-up 0.8s ease 2.8s forwards;
+      text-shadow: 0 2px 12px #00000066;
+    }
+
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Puntini di attesa animati ── */
+    .dots {
+      color: #c8914a;
+      font-size: 28px;
+      opacity: 0;
+      animation: fade-up 0.8s ease 3.1s forwards;
+      letter-spacing: 4px;
+    }
+    .dots span { animation: blink 1.2s infinite; }
+    .dots span:nth-child(2) { animation-delay: 0.2s; }
+    .dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0.2; }
+      40%            { opacity: 1; }
+    }
+
+  </style>
+</head>
+<body>
+  <div class="scene">
+    <div class="board">
+      <!-- Post-it che volano via -->
+      <div class="note note-1"></div>
+      <div class="note note-2"></div>
+      <div class="note note-3"></div>
+      <div class="note note-4"></div>
+      <div class="note note-5"></div>
+
+<!-- Messaggio finale -->
+      <div class="message-card">
+        <p class="message-text">Stiamo riordinando le idee,<br>torniamo presto!</p>
+      </div>
+    </div>
+
+    <div class="title">📋 Bacheca</div>
+    <div class="dots">
+      <span>●</span><span>●</span><span>●</span>
+    </div>
+  </div>
+</body>
+</html>
