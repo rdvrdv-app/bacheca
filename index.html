@@ -989,7 +989,7 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
 }
 
 // ── Event Detail ──────────────────────────────────────────────
-function EventDetail({ event, events, th, user, profile, onBack, onVote, onToast, onStatusChange, onCancelVote, onDelete, onEdit, onShopping, onQuote, onPublish }) {
+function EventDetail({ event, events, th, user, profile, users = [], onBack, onVote, onToast, onStatusChange, onCancelVote, onDelete, onEdit, onShopping, onQuote, onPublish }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmVote,   setConfirmVote]   = useState(null);
   const e   = events.find(x => x.id===event.id) || event;
@@ -1048,6 +1048,15 @@ function EventDetail({ event, events, th, user, profile, onBack, onVote, onToast
       <h2 style={{margin:"0 0 6px",fontSize:20,color:th.text,display:"flex",alignItems:"center",gap:8}}>
         {e.title}{restricted && <span title="Visibilità limitata" style={{fontSize:14}}>🔒</span>}
       </h2>
+      {restricted && (
+        <div style={{fontSize:12,color:th.sub,marginBottom:8,padding:"6px 10px",background:th.input,borderRadius:8,display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}}>
+          <span style={{fontWeight:600,marginRight:4}}>🔒 Visibile a:</span>
+          {(e.visible_to||[]).map(uid => {
+            const u = (users||[]).find(x => x.id===uid);
+            return <span key={uid} style={{background:th.accent+"22",color:th.accent,borderRadius:10,padding:"2px 8px",fontSize:11,fontWeight:600}}>{u?.full_name||u?.email||uid.slice(0,8)}</span>;
+          })}
+        </div>
+      )}
       {e.created_by && (
         <div style={{fontSize:12,color:th.sub,marginBottom:10}}>
           Creato da {e.organizer||"utente"}
@@ -1663,6 +1672,7 @@ function App() {
     if (!!(old.multiSelect||old.multi_select) !== !!form.multiSelect) changes.push("tipo selezione");
     if (!!old.lista_spesa !== !!form.listaSpesa) changes.push("lista della spesa");
     if (!!old.gestione_quote !== !!form.gestioneQuote) changes.push("gestione quote");
+    if ((old.quote_delegato||"") !== (form.quoteDelegato||"")) changes.push("delegato quote");
     const oldVis = (old.visible_to||[]).slice().sort();
     const newVis = (form.visMode==="some" ? form.visibleTo : []).slice().sort();
     if (JSON.stringify(oldVis) !== JSON.stringify(newVis)) changes.push("visibilità");
@@ -1771,6 +1781,7 @@ function App() {
     const { error } = await sb.from("events").update(patch).eq("id", id);
     if (error) { showToast("❌ Errore salvataggio"); return; }
     setEvents(p => p.map(e => e.id===id ? {...e, ...patch} : e));
+    showToast("💾 Salvato!");
   };
 
   const handleLogout = async () => { await sb.auth.signOut(); setView("calendar"); setTab("cal"); };
@@ -1786,7 +1797,7 @@ function App() {
   if (auth === "register") return <RegisterView th={th} onGoLogin={() => setAuth("login")}/>;
 
   const mainContent = () => {
-    if (view==="event")    return <EventDetail event={selEvent} events={events} th={th} user={user} profile={profile} onBack={() => setView("calendar")} onVote={() => setView("vote")} onToast={showToast} onStatusChange={handleStatusChange} onCancelVote={handleCancelVote} onDelete={handleDelete} onEdit={e => { setSelEvent(e); setView("edit"); }} onShopping={e => { setSelEvent(e); setView("shopping"); }} onQuote={e => { setSelEvent(e); setView("quote"); }} onPublish={handlePublish}/>;
+    if (view==="event")    return <EventDetail event={selEvent} events={events} th={th} user={user} profile={profile} users={allUsers} onBack={() => setView("calendar")} onVote={() => setView("vote")} onToast={showToast} onStatusChange={handleStatusChange} onCancelVote={handleCancelVote} onDelete={handleDelete} onEdit={e => { setSelEvent(e); setView("edit"); }} onShopping={e => { setSelEvent(e); setView("shopping"); }} onQuote={e => { setSelEvent(e); setView("quote"); }} onPublish={handlePublish}/>;
     if (view==="vote")     return <VoteView event={selEvent} events={events} th={th} profile={profile} user={user} onBack={() => setView("event")} onSubmit={handleVote} saving={saving}/>;
     if (view==="edit")     return <EventForm event={selEvent} th={th} onBack={() => setView("event")} onSubmit={form => handleEdit(form, selEvent)} saving={saving} isEdit={true} profile={profile} users={allUsers} userId={user?.id}/>;
     if (view==="shopping") return <ShoppingListView event={selEvent} events={events} th={th} onBack={() => setView("event")} onSave={handleShopSave}/>;
