@@ -1964,7 +1964,7 @@ function App() {
     <div onTouchStart={onPtrStart} onTouchMove={onPtrMove} onTouchEnd={onPtrEnd}
       style={{background:th.bg,minHeight:"100vh",maxWidth:430,margin:"0 auto",position:"relative"}}>
       <div style={{background:th.card,borderBottom:`1px solid ${th.border}`,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
-        <div>
+        <div onClick={() => { setView("calendar"); setTab("cal"); }} style={{cursor:"pointer"}}>
           <div style={{fontWeight:700,fontSize:17,color:th.text}}>📅 Bacheca</div>
           <div style={{fontSize:11,color:th.sub}}>{MONTHS[calDate.m]} {calDate.y}</div>
         </div>
