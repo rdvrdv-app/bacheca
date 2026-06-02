@@ -1873,14 +1873,13 @@ function App() {
     if (tab==="new")       return <EventForm th={th} profile={profile} users={allUsers} onBack={() => { setTab("cal"); setView("calendar"); }} onSubmit={handleCreate} saving={saving} isEdit={false} userId={user?.id}/>;
     if (tab==="search")    return <SearchView events={visibleEvents} th={th} onOpen={openEvent} onBack={() => setTab("cal")}/>;
 
-    const today = new Date(); today.setHours(0,0,0,0);
-    const oneDayAgo = new Date(today);
-    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+    const now = new Date();
     const future = visibleEvents.filter(e => {
       if (!e.date) return true;
-      const eventDate = new Date(e.date+"T00:00:00");
-      if (eventDate < oneDayAgo) return false;
-      return true;
+      const timeStr = e.time || "23:59";
+      const eventEnd = new Date(e.date + "T" + timeStr);
+      eventEnd.setMinutes(eventEnd.getMinutes() + 1);
+      return now < eventEnd;
     });
     const past = visibleEvents.filter(e => !future.includes(e));
 
