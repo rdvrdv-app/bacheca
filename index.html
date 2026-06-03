@@ -54,7 +54,7 @@ const scColor = (sc, th) => th[sc.colorKey] || th.accent;
 
 const UNITS  = ["pz","kg","g","L","cl","ml"];
 const MONTHS = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
-const DAYS   = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
+const DAYS   = ["Lun","Mar","Mer","Gio","Ven","Sab","Dom"];
 const AVATAR_COLORS = ["#7EB8D4","#85C9A8","#F6C97A","#E8907A","#A8C4D4","#F4A97A"];
 
 // Categorie evento per la scoperta automatica ("Tutti" = ricerca su tutte)
@@ -65,9 +65,21 @@ const ITALIAN_CITIES = ["Agrigento","Alessandria","Ancona","Aosta","Arezzo","Asc
 
 // ── Helpers ───────────────────────────────────────────────────
 const getDaysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
-const getFirstDay    = (y, m) => new Date(y, m, 1).getDay();
+// Offset della prima cella con settimana che inizia di lunedì (Lun=0 … Dom=6)
+const getFirstDay    = (y, m) => (new Date(y, m, 1).getDay() + 6) % 7;
 const toDateStr      = (y, m, d) => `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 const openMaps       = addr => window.open("https://maps.google.com/?q=" + encodeURIComponent(addr), "_blank");
+// Ferie attive in un dato giorno (ds = "YYYY-MM-DD"): il confronto stringa ISO è ordinabile
+const ferieOnDay     = (ferie, ds) => (ferie||[]).filter(f => f.start_date <= ds && ds <= f.end_date);
+// Formatta una data in GG-MM-AAAA (es. 03-06-2026). Accetta "YYYY-MM-DD" o un timestamp/Date.
+const fmtDate = v => {
+  if (!v) return "";
+  let y, mo, d;
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) { [y, mo, d] = v.slice(0,10).split("-"); }
+  else { const dt = new Date(v); if (isNaN(dt)) return ""; y = dt.getFullYear(); mo = String(dt.getMonth()+1).padStart(2,"0"); d = String(dt.getDate()).padStart(2,"0"); }
+  return `${d}-${mo}-${y}`;
+};
+const fmtFerie       = ds => fmtDate(ds);
 
 const daysUntil = deadline => {
   if (!deadline) return null;
@@ -511,7 +523,7 @@ function ApprovalQueue({ th, pendingEvents, onPublish, onEdit, onDelete }) {
             {e.source==="agent" && <span style={{fontSize:10,padding:"2px 7px",borderRadius:8,background:th.accent+"22",color:th.accent,fontWeight:700,flexShrink:0}}>🤖 Auto</span>}
           </div>
           <div style={{fontSize:12,color:th.sub,marginBottom:8,display:"flex",flexWrap:"wrap",gap:8}}>
-            {e.date && <span>📅 {e.date}{e.time?` 🕐 ${e.time}`:""}</span>}
+            {e.date && <span>📅 {fmtDate(e.date)}{e.time?` 🕐 ${e.time}`:""}</span>}
             {e.address && <span>📍 {e.address}</span>}
             {e.discovery_meta?.category && <span style={{background:th.input,borderRadius:8,padding:"1px 8px"}}>{e.discovery_meta.category}</span>}
           </div>
@@ -653,7 +665,7 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
             <div key={l.id} style={{...cardSt(th),marginBottom:8}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                 <span style={{fontSize:13,fontWeight:600,color:th.text}}>{l.action}</span>
-                <span style={{fontSize:11,color:th.sub}}>{new Date(l.created_at).toLocaleDateString("it-IT")}</span>
+                <span style={{fontSize:11,color:th.sub}}>{fmtDate(l.created_at)}</span>
               </div>
               <div style={{fontSize:12,color:th.sub}}>{nameFor(l)} · {l.entity_title}</div>
               {l.details && <div style={{fontSize:11,color:th.sub,marginTop:4,fontStyle:"italic"}}>{l.details}</div>}
@@ -670,7 +682,7 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
               <div key={e.id} style={{...cardSt(th),marginBottom:10}}>
                 <div style={{fontWeight:600,fontSize:14,color:th.text,marginBottom:4}}>{e.title}</div>
                 <div style={{fontSize:12,color:th.sub,marginBottom:8}}>
-                  Eliminato il {new Date(e.deleted_at).toLocaleDateString("it-IT")} ·{" "}
+                  Eliminato il {fmtDate(e.deleted_at)} ·{" "}
                   <span style={{color:dLeft<=3?th.danger:th.warn,fontWeight:600}}>{dLeft}gg rimasti</span>
                 </div>
                 <div style={{display:"flex",gap:6}}>
@@ -703,7 +715,7 @@ function EventCard({ e, th, onOpen }) {
         {(e.date||e.time) && (
           <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2,flexWrap:"wrap"}}>
             <span style={{fontSize:12,color:th.accent,fontWeight:600}}>
-              {e.date&&`📅 ${e.date}`}{e.date&&e.time&&"  "}{e.time&&`🕐 ${e.time}`}
+              {e.date&&`📅 ${fmtDate(e.date)}`}{e.date&&e.time&&"  "}{e.time&&`🕐 ${e.time}`}
             </span>
             {badge && (
               <span style={{background:badge.bg,color:badge.color,borderRadius:8,padding:"2px 8px",fontSize:11,fontWeight:600}}>
@@ -724,7 +736,7 @@ function EventCard({ e, th, onOpen }) {
 }
 
 // ── Calendar Grid ─────────────────────────────────────────────
-function CalGrid({ calDate, setCalDate, events, th, onDayClick }) {
+function CalGrid({ calDate, setCalDate, events, ferie, th, onDayClick }) {
   const { y, m } = calDate;
   const days  = getDaysInMonth(y, m);
   const first = getFirstDay(y, m);
@@ -737,6 +749,16 @@ function CalGrid({ calDate, setCalDate, events, th, onDayClick }) {
     for (let d = 1; d <= days; d++) arr.push(d);
     return arr;
   }, [y, m, first, days]);
+
+  // Giorni del mese in cui almeno una persona è in ferie (per la palma 🌴)
+  const ferieDays = useMemo(() => {
+    const s = new Set();
+    for (let d = 1; d <= days; d++) {
+      const ds = toDateStr(y, m, d);
+      if ((ferie||[]).some(f => f.start_date <= ds && ds <= f.end_date)) s.add(ds);
+    }
+    return s;
+  }, [ferie, y, m, days]);
 
   return (
     <div>
@@ -754,14 +776,17 @@ function CalGrid({ calDate, setCalDate, events, th, onDayClick }) {
           const ds  = toDateStr(y, m, d);
           const isT = ds === ts;
           const evs = events.filter(e => e.date === ds);
+          const hasF = ferieDays.has(ds);
+          const clickable = evs.length || hasF;
           return (
-            <div key={i} onClick={() => evs.length && onDayClick(ds, evs)}
-              style={{borderRadius:10,padding:"6px 2px",textAlign:"center",cursor:evs.length?"pointer":"default",
+            <div key={i} onClick={() => clickable && onDayClick(ds, evs)}
+              style={{borderRadius:10,padding:"6px 2px",textAlign:"center",cursor:clickable?"pointer":"default",
                 background:isT?th.accent:"transparent",border:`2px solid ${isT?th.accent:"transparent"}`}}>
               <span style={{fontSize:13,fontWeight:isT?700:400,color:isT?"#fff":th.text}}>{d}</span>
-              {evs.length>0 && (
-                <div style={{display:"flex",justifyContent:"center",gap:2,marginTop:3,flexWrap:"wrap"}}>
+              {(evs.length>0 || hasF) && (
+                <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:2,marginTop:3,flexWrap:"wrap"}}>
                   {evs.slice(0,4).map(e => <div key={e.id} style={{width:6,height:6,borderRadius:"50%",background:scColor(STATUS_CONFIG[e.status]||STATUS_CONFIG.open,th)}}/>)}
+                  {hasF && <span style={{fontSize:9,lineHeight:1}}>🌴</span>}
                 </div>
               )}
             </div>
@@ -1020,7 +1045,7 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
   const copyResults = () => {
     const lines = [
       `📅 ${e.title}`,
-      e.date ? `🗓 ${e.date}${e.time ? " alle "+e.time : ""}` : "",
+      e.date ? `🗓 ${fmtDate(e.date)}${e.time ? " alle "+e.time : ""}` : "",
       `Stato: ${sc.label}`, "",
       "Risultati sondaggio:",
       ...(e.options||[]).map(o => { const v = e.votes[o]||[]; return `• ${o}: ${v.length} vot${v.length===1?"o":"i"}${v.length>0?" ("+v.join(", ")+")":""}`; }),
@@ -1092,8 +1117,8 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
       )}
 
       {e.organizer  && <div style={{fontSize:13,color:th.sub,marginBottom:4}}>👤 {e.organizer}</div>}
-      {(e.date||e.time) && <div style={{fontSize:13,color:th.accent,fontWeight:600,marginBottom:4}}>{e.date&&`📅 ${e.date}`}{e.date&&e.time&&"  "}{e.time&&`🕐 ${e.time}`}</div>}
-      {e.deadline   && <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}><span style={{fontSize:13,color:th.sub}}>⏰ Scadenza: {e.deadline}</span><DeadlineBadge deadline={e.deadline} th={th}/></div>}
+      {(e.date||e.time) && <div style={{fontSize:13,color:th.accent,fontWeight:600,marginBottom:4}}>{e.date&&`📅 ${fmtDate(e.date)}`}{e.date&&e.time&&"  "}{e.time&&`🕐 ${e.time}`}</div>}
+      {e.deadline   && <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}><span style={{fontSize:13,color:th.sub}}>⏰ Scadenza: {fmtDate(e.deadline)}</span><DeadlineBadge deadline={e.deadline} th={th}/></div>}
       {e.last_edit  && <div style={{fontSize:12,color:th.warn,marginBottom:10,fontStyle:"italic",padding:"6px 10px",background:th.warn+"18",borderRadius:8}}>✏️ {e.last_edit}</div>}
       {e.address    && <div onClick={() => openMaps(e.address)} style={{...cardSt(th),display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:12}}><span style={{fontSize:18}}>📍</span><div><div style={{fontSize:13,color:th.text}}>{e.address}</div><div style={{fontSize:11,color:th.accent}}>Apri in Google Maps →</div></div></div>}
       {e.notes      && <div style={{...cardSt(th),marginBottom:12}}><div style={{fontSize:12,color:th.sub,marginBottom:4}}>📝 Note</div><div style={{fontSize:13,color:th.text,whiteSpace:"pre-wrap"}}>{e.notes}</div></div>}
@@ -1626,6 +1651,117 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
   );
 }
 
+// ── Ferie ─────────────────────────────────────────────────────
+function FerieView({ th, user, ferie, users, onAdd, onDelete, onBack }) {
+  const now = new Date();
+  const [pick,  setPick]  = useState({ y: now.getFullYear(), m: now.getMonth() });
+  const [start, setStart] = useState(null);
+  const [end,   setEnd]   = useState(null);
+  const [note,  setNote]  = useState("");
+  const [busy,  setBusy]  = useState(false);
+
+  const { y, m } = pick;
+  const days  = getDaysInMonth(y, m);
+  const first = getFirstDay(y, m);
+  const ts    = toDateStr(now.getFullYear(), now.getMonth(), now.getDate());
+  const cells = [];
+  for (let i = 0; i < first; i++) cells.push(null);
+  for (let d = 1; d <= days; d++) cells.push(d);
+
+  const nameOf = uid => { const u = users.find(x => x.id === uid); return u?.full_name || u?.email || "Utente"; };
+  const inRange = ds => start && (end ? (ds >= start && ds <= end) : ds === start);
+
+  const tapDay = ds => {
+    if (!start || (start && end)) { setStart(ds); setEnd(null); }     // nuova selezione
+    else if (ds < start)         { setStart(ds); }                    // sposta l'inizio
+    else                         { setEnd(ds); }                      // imposta la fine
+  };
+
+  const save = async () => {
+    if (!start) return;
+    setBusy(true);
+    await onAdd(start, end || start, note.trim());
+    setBusy(false);
+    setStart(null); setEnd(null); setNote("");
+  };
+
+  const mine   = ferie.filter(f => f.user_id === user.id).sort((a,b) => a.start_date.localeCompare(b.start_date));
+  const others = ferie
+    .filter(f => f.user_id !== user.id && f.end_date >= ts)
+    .sort((a,b) => a.start_date.localeCompare(b.start_date));
+
+  return (
+    <div>
+      <button onClick={onBack} style={backBtn(th)}>← Indietro</button>
+      <h2 style={{margin:"0 0 4px",fontSize:18,color:th.text}}>🌴 Ferie</h2>
+      <div style={{fontSize:13,color:th.sub,marginBottom:16}}>
+        Seleziona il <b>primo</b> e l'<b>ultimo</b> giorno del periodo, poi salva. I tuoi periodi sono visibili a tutti per coordinarvi.
+      </div>
+
+      <div style={{...cardSt(th),marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <button onClick={() => setPick(p => p.m===0 ? {y:p.y-1,m:11} : {y:p.y,m:p.m-1})} style={btnSt(th)}>‹</button>
+          <span style={{fontWeight:700,fontSize:16,color:th.text}}>{MONTHS[m]} {y}</span>
+          <button onClick={() => setPick(p => p.m===11 ? {y:p.y+1,m:0} : {y:p.y,m:p.m+1})} style={btnSt(th)}>›</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+          {DAYS.map(d => <div key={d} style={{textAlign:"center",fontSize:11,color:th.sub,paddingBottom:4}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+          {cells.map((d, i) => {
+            if (!d) return <div key={i}/>;
+            const ds  = toDateStr(y, m, d);
+            const sel = inRange(ds);
+            const isT = ds === ts;
+            return (
+              <div key={i} onClick={() => tapDay(ds)}
+                style={{borderRadius:10,padding:"8px 2px",textAlign:"center",cursor:"pointer",
+                  background:sel?th.accent:"transparent",border:`2px solid ${isT&&!sel?th.accent:"transparent"}`}}>
+                <span style={{fontSize:13,fontWeight:sel||isT?700:400,color:sel?"#fff":th.text}}>{d}</span>
+              </div>
+            );
+          })}
+        </div>
+        {start && (
+          <div style={{marginTop:12,fontSize:13,color:th.text}}>
+            Periodo selezionato: <b>{fmtFerie(start)}</b>{end && end!==start ? <> → <b>{fmtFerie(end)}</b></> : ""}
+          </div>
+        )}
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Nota opzionale (es. destinazione)…"
+          style={{...inputSt(th),marginTop:12,marginBottom:8}}/>
+        <button onClick={save} disabled={!start||busy} style={{...primBtn(th),width:"100%",opacity:!start||busy?0.5:1}}>
+          {busy ? "Salvataggio…" : "🌴 Aggiungi periodo"}
+        </button>
+      </div>
+
+      <div style={sectTitle(th)}>I miei periodi</div>
+      {mine.length===0 && <div style={{color:th.sub,fontSize:13,marginBottom:16}}>Non hai ancora inserito ferie.</div>}
+      {mine.map(f => (
+        <div key={f.id} style={{...cardSt(th),marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:600,color:th.text}}>🌴 {fmtFerie(f.start_date)}{f.end_date!==f.start_date ? ` → ${fmtFerie(f.end_date)}` : ""}</div>
+            {f.note && <div style={{fontSize:12,color:th.sub,marginTop:2}}>{f.note}</div>}
+          </div>
+          <button onClick={() => onDelete(f.id)} style={{...btnSt(th),fontSize:12,padding:"6px 10px"}}>🗑️</button>
+        </div>
+      ))}
+
+      {others.length>0 && (
+        <div style={{marginTop:20}}>
+          <div style={sectTitle(th)}>Ferie del gruppo (in arrivo)</div>
+          {others.map(f => (
+            <div key={f.id} style={{...cardSt(th),marginBottom:8}}>
+              <div style={{fontSize:14,fontWeight:600,color:th.text}}>👤 {nameOf(f.user_id)}</div>
+              <div style={{fontSize:13,color:th.accent,fontWeight:600,marginTop:2}}>🌴 {fmtFerie(f.start_date)}{f.end_date!==f.start_date ? ` → ${fmtFerie(f.end_date)}` : ""}</div>
+              {f.note && <div style={{fontSize:12,color:th.sub,marginTop:2}}>{f.note}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────
 function App() {
   const [dark,    setDark]    = useState(() => localStorage.getItem("bacheca_dark") === "1");
@@ -1637,6 +1773,7 @@ function App() {
   const [tab,     setTab]     = useState("cal");
   const [events,  setEvents]  = useState([]);
   const [allUsers,setAllUsers]= useState([]);
+  const [ferie,   setFerie]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [selEvent,setSelEvent]= useState(null);
   const [calDate, setCalDate] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
@@ -1701,6 +1838,26 @@ function App() {
 
   useEffect(() => { if (auth==="app" && profileLoaded) loadEvents(); }, [auth, loadEvents, profileLoaded]);
 
+  const loadFerie = useCallback(async () => {
+    if (!user) return;
+    const { data } = await sb.from("ferie").select("*").order("start_date");
+    setFerie(data || []);
+  }, [user]);
+
+  useEffect(() => { if (auth==="app") loadFerie(); }, [auth, loadFerie]);
+
+  const handleAddFerie = async (start, end, note) => {
+    const { error } = await sb.from("ferie").insert({ user_id: user.id, start_date: start, end_date: end, note: note || null });
+    if (error) { showToast("❌ " + error.message); return; }
+    showToast("🌴 Ferie aggiunte!"); await loadFerie();
+  };
+
+  const handleDeleteFerie = async (id) => {
+    const { error } = await sb.from("ferie").delete().eq("id", id);
+    if (error) { showToast("❌ " + error.message); return; }
+    showToast("🗑️ Periodo rimosso"); await loadFerie();
+  };
+
   // Eventi visibili: pubblici visibili all'utente + le proprie bozze (pre-approvazione)
   const visibleEvents = useMemo(
     () => events.filter(e => canSeeEvent(e, user, profile) && (!e.pending_approval || e.created_by === user?.id)),
@@ -1737,7 +1894,8 @@ function App() {
     if (JSON.stringify(oldVis) !== JSON.stringify(newVis)) changes.push("visibilità");
     if (JSON.stringify((old.options||[]).map(o=>(o||"").trim()).filter(Boolean)) !== JSON.stringify(form.options.map(o=>(o||"").trim()).filter(Boolean))) changes.push("opzioni");
     if (!changes.length) return null;
-    const now = new Date().toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+    const _n = new Date();
+    const now = `${fmtDate(_n)} ${String(_n.getHours()).padStart(2,"0")}:${String(_n.getMinutes()).padStart(2,"0")}`;
     return `${now} — Modificato: ${changes.join(", ")}`;
   };
 
@@ -1872,6 +2030,7 @@ function App() {
     if (view==="admin")    return <AdminView th={th} user={user} onBack={() => setView("calendar")} showToast={showToast} pendingEvents={pendingEvents} onPublish={handlePublish} onEditEvent={e => { setSelEvent(e); setView("edit"); }} onDeleteEvent={handleDelete} trashRefresh={trashRefresh}/>;
     if (tab==="new")       return <EventForm th={th} profile={profile} users={allUsers} onBack={() => { setTab("cal"); setView("calendar"); }} onSubmit={handleCreate} saving={saving} isEdit={false} userId={user?.id}/>;
     if (tab==="search")    return <SearchView events={visibleEvents} th={th} onOpen={openEvent} onBack={() => setTab("cal")}/>;
+    if (tab==="ferie")     return <FerieView th={th} user={user} ferie={ferie} users={allUsers} onAdd={handleAddFerie} onDelete={handleDeleteFerie} onBack={() => setTab("cal")}/>;
 
     const now = new Date();
     const future = visibleEvents.filter(e => {
@@ -1885,17 +2044,33 @@ function App() {
 
     return (
       <div>
-        <CalGrid calDate={calDate} setCalDate={setCalDate} events={visibleEvents} th={th} onDayClick={(ds, evs) => setFiltDay({ date:ds, events:evs })}/>
+        <CalGrid calDate={calDate} setCalDate={setCalDate} events={visibleEvents} ferie={ferie} th={th} onDayClick={(ds, evs) => setFiltDay({ date:ds, events:evs })}/>
         <div style={{marginTop:20}}>
           {filtDay ? (
             <>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                 <div style={{fontSize:13,fontWeight:600,color:th.sub,letterSpacing:1,textTransform:"uppercase"}}>
-                  📅 {new Date(filtDay.date+"T00:00:00").toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"})}
+                  📅 {new Date(filtDay.date+"T00:00:00").toLocaleDateString("it-IT",{weekday:"long"})} {fmtDate(filtDay.date)}
                 </div>
                 <button onClick={() => setFiltDay(null)} style={{...btnSt(th),fontSize:12,padding:"4px 10px"}}>✕ Tutti</button>
               </div>
               {filtDay.events.map(e => <EventCard key={e.id} e={e} th={th} onOpen={openEvent}/>)}
+              {(() => {
+                const df = ferieOnDay(ferie, filtDay.date);
+                if (!df.length) return null;
+                const nameOf = uid => { const u = allUsers.find(x => x.id === uid); return u?.full_name || u?.email || "Utente"; };
+                return (
+                  <div style={{...cardSt(th),marginTop:8}}>
+                    <div style={{fontSize:13,fontWeight:700,color:th.text,marginBottom:8}}>🌴 In ferie questo giorno</div>
+                    {df.map(f => (
+                      <div key={f.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"4px 0"}}>
+                        <span style={{fontSize:14,color:th.text,fontWeight:600}}>👤 {nameOf(f.user_id)}</span>
+                        <span style={{fontSize:12,color:th.sub}}>{fmtFerie(f.start_date)}{f.end_date!==f.start_date ? ` → ${fmtFerie(f.end_date)}` : ""}{f.note ? ` · ${f.note}` : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </>
           ) : (
             <>
@@ -1998,7 +2173,7 @@ function App() {
 
       {showNav && (
         <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:th.card,borderTop:`1px solid ${th.border}`,display:"flex",padding:"10px 0 14px",zIndex:10}}>
-          {[["cal","🗓️","Calendario"],["new","➕","Crea"],["search","🔍","Cerca"]].map(([t, ic, lb]) => (
+          {[["cal","🗓️","Calendario"],["new","➕","Crea"],["ferie","🌴","Ferie"],["search","🔍","Cerca"]].map(([t, ic, lb]) => (
             <button key={t} onClick={() => { setTab(t); setView("calendar"); }}
               style={{flex:1,border:"none",background:"transparent",cursor:"pointer",color:tab===t&&view==="calendar"?th.accent:th.sub,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
               <span style={{fontSize:22}}>{ic}</span>
