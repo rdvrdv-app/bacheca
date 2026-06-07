@@ -2092,15 +2092,19 @@ function App() {
   };
 
   const handleShopSave = async (id, shopping_list) => {
-    const { error } = await sb.from("events").update({ shopping_list }).eq("id", id);
+    const { error } = await sb.rpc("save_shopping_list", { p_event_id:id, p_shopping_list:shopping_list });
     if (error) { showToast("❌ Errore salvataggio"); return; }
     setEvents(p => p.map(e => e.id===id ? {...e, shopping_list} : e));
   };
 
   const handleQuoteSave = async (id, patch) => {
-    const { error } = await sb.from("events").update(patch).eq("id", id);
+    const cur = events.find(e => e.id===id) || {};
+    const quote     = patch.quote     !== undefined ? patch.quote     : (cur.quote||[]);
+    const quota_num = patch.quota_num !== undefined ? patch.quota_num : (cur.quota_num||0);
+    const quota_tot = patch.quota_tot !== undefined ? patch.quota_tot : (cur.quota_tot||0);
+    const { error } = await sb.rpc("save_quotes", { p_event_id:id, p_quote:quote, p_quota_num:Number(quota_num)||0, p_quota_tot:Number(quota_tot)||0 });
     if (error) { showToast("❌ Errore salvataggio"); return; }
-    setEvents(p => p.map(e => e.id===id ? {...e, ...patch} : e));
+    setEvents(p => p.map(e => e.id===id ? {...e, quote, quota_num, quota_tot} : e));
     showToast("💾 Salvato!");
   };
 
