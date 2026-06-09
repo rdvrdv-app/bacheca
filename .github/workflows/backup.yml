@@ -29,6 +29,27 @@ jobs:
           echo "{\"exported_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"project\": \"divxqcadlishdfhpvixd\"}" \
             > backup/meta.json
 
+      - name: Backup locandine (storage event-flyers)
+        run: |
+          python3 - <<'EOF'
+          import json, os, urllib.request
+          events = json.load(open("backup/events.json"))
+          n = 0
+          for e in events:
+              url = e.get("flyer_url") or ""
+              if "/event-flyers/" not in url:
+                  continue
+              rel = url.split("/event-flyers/", 1)[1]
+              dest = os.path.join("backup/flyers", rel)
+              os.makedirs(os.path.dirname(dest), exist_ok=True)
+              try:
+                  urllib.request.urlretrieve(url, dest)
+                  n += 1
+              except Exception as ex:
+                  print(f"  ⚠️ skip {url}: {ex}")
+          print(f"  → {n} locandine salvate")
+          EOF
+
       - name: Create archive
         run: |
           TIMESTAMP=$(date +"%Y%m%d_%H%M%S")

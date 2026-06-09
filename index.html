@@ -7,10 +7,15 @@
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin/>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
   <link rel="preconnect" href="https://divxqcadlishdfhpvixd.supabase.co" crossorigin/>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#7EB8D4"/>
+  <link rel="icon" href="icon.svg" type="image/svg+xml"/>
+  <link rel="apple-touch-icon" href="icon.svg"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Versione pinnata: per aggiornare cambia il numero qui e in docs/IMPLEMENTAZIONI.md -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -114,6 +119,43 @@ const eventBadge = (date) => {
   if (diff === 0) return { label: "🔔 Oggi",   bg: LIGHT.danger, color: "#fff" };
   if (diff === 1) return { label: "📅 Domani", bg: LIGHT.ok,     color: "#fff" };
   return null;
+};
+
+// ── Esporta in calendario (Google Calendar / file .ics) ───────
+const addDaysStr = (ds, n) => { const d = new Date(ds+"T00:00:00"); d.setDate(d.getDate()+n); return toDateStr(d.getFullYear(), d.getMonth(), d.getDate()); };
+// Con orario: blocco di 2 ore; senza orario o multi-giorno: tutto il giorno (DTEND esclusivo)
+const calendarDates = e => {
+  if (e.time && !isMultiDay(e)) {
+    const [h, mn] = e.time.split(":").map(Number);
+    const stamp = (hh, mm) => `${e.date.replace(/-/g,"")}T${String(hh).padStart(2,"0")}${String(mm).padStart(2,"0")}00`;
+    return { start: stamp(h, mn), end: stamp(Math.min(h+2, 23), mn), allDay: false };
+  }
+  return { start: e.date.replace(/-/g,""), end: addDaysStr(e.end_date || e.date, 1).replace(/-/g,""), allDay: true };
+};
+const googleCalUrl = e => {
+  const { start, end } = calendarDates(e);
+  const p = new URLSearchParams({ action:"TEMPLATE", text:e.title||"Evento", dates:`${start}/${end}`, details:e.notes||"", location:e.address||"" });
+  return "https://calendar.google.com/calendar/render?" + p.toString();
+};
+const downloadIcs = e => {
+  const { start, end, allDay } = calendarDates(e);
+  const esc = s => (s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");
+  const ics = [
+    "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Bacheca//IT","BEGIN:VEVENT",
+    `UID:bacheca-${e.id}@rdvrdv-app.github.io`,
+    `DTSTAMP:${new Date().toISOString().replace(/[-:.]/g,"").slice(0,15)}Z`,
+    allDay ? `DTSTART;VALUE=DATE:${start}` : `DTSTART:${start}`,
+    allDay ? `DTEND;VALUE=DATE:${end}`     : `DTEND:${end}`,
+    `SUMMARY:${esc(e.title)}`,
+    e.address ? `LOCATION:${esc(e.address)}` : "",
+    e.notes   ? `DESCRIPTION:${esc(e.notes)}` : "",
+    "END:VEVENT","END:VCALENDAR",
+  ].filter(Boolean).join("\r\n");
+  const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = `${(e.title||"evento").replace(/[^\w\s-]/g,"").trim()||"evento"}.ics`;
+  a.click();
+  URL.revokeObjectURL(url);
 };
 
 const validatePassword = p => {
@@ -854,15 +896,15 @@ function SearchView({ events, th, onOpen, onBack }) {
   const [q, setQ] = useState("");
   const ql  = q.trim().toLowerCase();
   const res = useMemo(() =>
-    ql ? events.filter(e => (e.title||"").toLowerCase().includes(ql) || (e.notes||"").toLowerCase().includes(ql)) : [],
+    ql ? events.filter(e => [e.title, e.notes, e.organizer, e.address].some(f => (f||"").toLowerCase().includes(ql))) : [],
   [ql, events]);
 
   return (
     <div>
       <button onClick={onBack} style={backBtn(th)}>← Indietro</button>
       <h2 style={{margin:"0 0 16px",fontSize:18,color:th.text}}>Cerca</h2>
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Cerca per titolo o note..." style={inputSt(th)} autoFocus/>
-      <div style={{fontSize:11,color:th.sub,marginBottom:16,marginTop:-8}}>La ricerca funziona sui campi <b>titolo</b> e <b>note</b>.</div>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Cerca per titolo, note, organizzatore, luogo..." style={inputSt(th)} autoFocus/>
+      <div style={{fontSize:11,color:th.sub,marginBottom:16,marginTop:-8}}>La ricerca funziona su <b>titolo</b>, <b>note</b>, <b>organizzatore</b> e <b>luogo</b>.</div>
       {ql && res.length===0 && <div style={{color:th.sub,fontSize:14,textAlign:"center",padding:20}}>Nessun risultato per "<b>{q}</b>"</div>}
       {res.map(e => <EventCard key={e.id} e={e} th={th} onOpen={onOpen}/>)}
     </div>
@@ -958,6 +1000,26 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
   };
   const togglePaid   = id => persist(list.map(p => p.id===id ? {...p, paid:!p.paid} : p));
   const removePerson = id => persist(list.filter(p => p.id!==id));
+  // Anticipi: aggiornamento locale durante la digitazione, salvataggio al blur
+  const setAnticipo  = (id, v) => setList(l => l.map(p => p.id===id ? {...p, anticipo: v} : p));
+
+  // Saldi stile Splitwise: saldo = anticipato − quota; i debitori rimborsano i creditori
+  const totAnticipi = list.reduce((s, p) => s + (Number(p.anticipo)||0), 0);
+  const settlements = useMemo(() => {
+    if (quota <= 0) return [];
+    const bal  = list.map(p => ({ name: p.name, bal: (Number(p.anticipo)||0) - quota }));
+    const cred = bal.filter(b => b.bal >  0.005).map(b => ({...b})).sort((a,b) => b.bal - a.bal);
+    const deb  = bal.filter(b => b.bal < -0.005).map(b => ({...b})).sort((a,b) => a.bal - b.bal);
+    const out = []; let i = 0, j = 0;
+    while (i < deb.length && j < cred.length) {
+      const x = Math.min(-deb[i].bal, cred[j].bal);
+      out.push({ from: deb[i].name, to: cred[j].name, amt: x });
+      deb[i].bal += x; cred[j].bal -= x;
+      if (deb[i].bal  > -0.005) i++;
+      if (cred[j].bal <  0.005) j++;
+    }
+    return out;
+  }, [list, quota]);
 
   const already = new Set(list.map(p => (p.name||"").toLowerCase()));
   const candidates = useMemo(() => {
@@ -1019,6 +1081,39 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
                 ))}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {quota>0 && list.length>0 && (
+        <div style={{...cardSt(th),marginBottom:16}}>
+          <div style={sectTitle(th)}>💸 Anticipi e saldi</div>
+          <div style={{fontSize:11,color:th.sub,marginBottom:10,lineHeight:1.5}}>
+            Indica quanto ha <b>anticipato</b> ciascuno (es. chi ha pagato il ristorante): qui sotto vedi chi deve rimborsare chi.
+          </div>
+          {list.map(p => (
+            <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <span style={{flex:1,fontSize:13,color:th.text,fontWeight:600}}>{p.name}</span>
+              <input type="number" min="0" step="any" value={p.anticipo ?? ""} placeholder="0"
+                onChange={ev => setAnticipo(p.id, ev.target.value)} onBlur={() => persist(list)}
+                style={{...inputSt(th),marginBottom:0,width:110,textAlign:"right"}}/>
+              <span style={{fontSize:13,color:th.sub}}>€</span>
+            </div>
+          ))}
+          {totAnticipi>0 && Math.abs(totAnticipi-(Number(tot)||0))>0.01 && (
+            <div style={{fontSize:11,color:th.warn,marginTop:6}}>⚠️ Totale anticipi {fmt(totAnticipi)} diverso dalla spesa totale {fmt(Number(tot)||0)}.</div>
+          )}
+          {totAnticipi>0 && (
+            settlements.length>0
+              ? <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`}}>
+                  <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Per pareggiare i conti:</div>
+                  {settlements.map((s,i) => (
+                    <div key={i} style={{fontSize:13,color:th.text,marginBottom:4}}>
+                      <b>{s.from}</b> → <b>{s.to}</b>: <span style={{fontWeight:700,color:th.accent}}>{fmt(s.amt)}</span>
+                    </div>
+                  ))}
+                </div>
+              : <div style={{fontSize:12,color:th.ok,marginTop:6}}>✅ Conti in pari.</div>
           )}
         </div>
       )}
@@ -1206,6 +1301,13 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
         </button>
         <button onClick={copyResults} style={{...btnSt(th),flex:1}}>📋 Copia risultati</button>
       </div>
+
+      {e.date && (
+        <div style={{display:"flex",gap:8,marginBottom:12}}>
+          <button onClick={() => window.open(googleCalUrl(e), "_blank")} style={{...btnSt(th),flex:1}}>📆 Google Calendar</button>
+          <button onClick={() => downloadIcs(e)} style={{...btnSt(th),flex:1}}>📥 Scarica .ics</button>
+        </div>
+      )}
 
       {(e.participants||[]).length>0 && !blocked && (
         <div style={{marginBottom:12}}>
@@ -1926,6 +2028,17 @@ function App() {
 
   useEffect(() => { if (auth==="app") loadFerie(); }, [auth, loadFerie]);
 
+  // Aggiornamento live (richiede Realtime abilitato sulle tabelle: vedi supabase/migrations).
+  // Se Realtime non è attivo la sottoscrizione resta semplicemente muta.
+  useEffect(() => {
+    if (auth !== "app" || !profileLoaded) return;
+    const ch = sb.channel("db-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "events" }, () => loadEvents())
+      .on("postgres_changes", { event: "*", schema: "public", table: "ferie"  }, () => loadFerie())
+      .subscribe();
+    return () => { sb.removeChannel(ch); };
+  }, [auth, profileLoaded, loadEvents, loadFerie]);
+
   const handleAddFerie = async (start, end, note) => {
     const { error } = await sb.from("ferie").insert({ user_id: user.id, start_date: start, end_date: end, note: note || null });
     if (error) { showToast("❌ " + error.message); return; }
@@ -2285,6 +2398,12 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+<script>
+// PWA: registra il service worker (no-op se non supportato o file assente)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
 </script>
 </body>
 </html>
