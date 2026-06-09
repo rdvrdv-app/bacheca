@@ -16,6 +16,13 @@ elenca, per ognuno dei 9 punti, cosa è pronto e cosa va fatto a mano per attiva
 | 8 | Quote stile Splitwise | sezione "Anticipi e saldi" in Gestione quote | ✅ sì |
 | 9 | Pin supabase-js | versione fissata a `2.49.4` in `index.html` | ✅ sì |
 
+## ⚠️ Prima del merge in main
+
+Il branch dev punta al progetto Supabase **Bacheca-Dev** (`xgzmjxththubvpfwgsnu`):
+i test non toccano i dati veri. Al momento del merge in `main` **ripristinare le
+credenziali di produzione** in `index.html` (URL e KEY del progetto "Bacheca",
+`divxqcadlishdfhpvixd` — sono conservate nel commento del blocco Config).
+
 ## Passi manuali per la produzione
 
 ### 1 — Precompilazione JSX
