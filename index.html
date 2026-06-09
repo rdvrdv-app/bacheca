@@ -1004,23 +1004,14 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
   // Anticipi: aggiornamento locale durante la digitazione, salvataggio al blur
   const setAnticipo  = (id, v) => setList(l => l.map(p => p.id===id ? {...p, anticipo: v} : p));
 
-  // Saldi stile Splitwise: saldo = anticipato − quota; i debitori rimborsano i creditori
-  const totAnticipi = list.reduce((s, p) => s + (Number(p.anticipo)||0), 0);
-  const settlements = useMemo(() => {
-    if (quota <= 0) return [];
-    const bal  = list.map(p => ({ name: p.name, bal: (Number(p.anticipo)||0) - quota }));
-    const cred = bal.filter(b => b.bal >  0.005).map(b => ({...b})).sort((a,b) => b.bal - a.bal);
-    const deb  = bal.filter(b => b.bal < -0.005).map(b => ({...b})).sort((a,b) => a.bal - b.bal);
-    const out = []; let i = 0, j = 0;
-    while (i < deb.length && j < cred.length) {
-      const x = Math.min(-deb[i].bal, cred[j].bal);
-      out.push({ from: deb[i].name, to: cred[j].name, amt: x });
-      deb[i].bal += x; cred[j].bal -= x;
-      if (deb[i].bal  > -0.005) i++;
-      if (cred[j].bal <  0.005) j++;
-    }
-    return out;
-  }, [list, quota]);
+  // Regola anticipi: l'anticipo copre la quota. Se la supera, la quota risulta pagata
+  // e l'eccedenza è un credito da incassare (da chi è irrilevante).
+  // Il toggle 💰 indica che la persona ha saldato a mano il dovuto residuo.
+  const anticipoOf = p => Number(p.anticipo)||0;
+  const isPagata   = p => !!p.paid || (quota>0 && anticipoOf(p) >= quota);
+  const contributo = p => isPagata(p) ? Math.max(quota, anticipoOf(p)) : anticipoOf(p);
+  const creditoOf  = p => Math.max(0, anticipoOf(p) - quota);
+  const totAnticipi = list.reduce((s, p) => s + anticipoOf(p), 0);
 
   const already = new Set(list.map(p => (p.name||"").toLowerCase()));
   const candidates = useMemo(() => {
@@ -1029,10 +1020,11 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
     return [...new Set([...fromPoll, ...fromUsers])].filter(n => n && !already.has(n.toLowerCase()));
   }, [e.participants, users, list]);
 
-  const paidList    = list.filter(p => p.paid);
-  const unpaidList  = list.filter(p => !p.paid);
-  const incassato   = paidList.length * quota;
-  const daIncassare = unpaidList.length * quota;
+  const paidList     = list.filter(isPagata);
+  const unpaidList   = list.filter(p => !isPagata(p));
+  const incassato    = quota>0 ? list.reduce((s, p) => s + contributo(p), 0) : 0;
+  const daIncassare  = quota>0 ? unpaidList.reduce((s, p) => s + Math.max(0, quota - anticipoOf(p)), 0) : 0;
+  const daRestituire = quota>0 ? list.reduce((s, p) => s + creditoOf(p), 0) : 0;
 
   return (
     <div>
@@ -1066,13 +1058,19 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
         <div style={{...cardSt(th),marginBottom:16}}>
           <div style={sectTitle(th)}>Riepilogo</div>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-            <span style={{fontSize:13,color:th.sub}}>Incassato</span>
+            <span style={{fontSize:13,color:th.sub}}>Incassato / anticipato</span>
             <span style={{fontSize:14,fontWeight:700,color:th.ok}}>{fmt(incassato)}</span>
           </div>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:unpaidList.length?10:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
             <span style={{fontSize:13,color:th.sub}}>Ancora da incassare</span>
             <span style={{fontSize:14,fontWeight:700,color:daIncassare>0?th.danger:th.sub}}>{fmt(daIncassare)}</span>
           </div>
+          {daRestituire>0 && (
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{fontSize:13,color:th.sub}}>Da restituire (anticipi extra)</span>
+              <span style={{fontSize:14,fontWeight:700,color:th.warn}}>{fmt(daRestituire)}</span>
+            </div>
+          )}
           {unpaidList.length>0 && (
             <div style={{paddingTop:10,borderTop:`1px solid ${th.border}`}}>
               <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Mancano da:</div>
@@ -1090,7 +1088,7 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
         <div style={{...cardSt(th),marginBottom:16}}>
           <div style={sectTitle(th)}>💸 Anticipi e saldi</div>
           <div style={{fontSize:11,color:th.sub,marginBottom:10,lineHeight:1.5}}>
-            Indica quanto ha <b>anticipato</b> ciascuno (es. chi ha pagato il ristorante): qui sotto vedi chi deve rimborsare chi.
+            Indica quanto ha <b>anticipato</b> ciascuno (es. chi ha pagato il ristorante). Se l'anticipo copre la quota, questa risulta pagata; l'eccedenza è da incassare.
           </div>
           {list.map(p => (
             <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
@@ -1101,20 +1099,24 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
               <span style={{fontSize:13,color:th.sub}}>€</span>
             </div>
           ))}
-          {totAnticipi>0 && Math.abs(totAnticipi-(Number(tot)||0))>0.01 && (
-            <div style={{fontSize:11,color:th.warn,marginTop:6}}>⚠️ Totale anticipi {fmt(totAnticipi)} diverso dalla spesa totale {fmt(Number(tot)||0)}.</div>
-          )}
           {totAnticipi>0 && (
-            settlements.length>0
-              ? <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`}}>
-                  <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Per pareggiare i conti:</div>
-                  {settlements.map((s,i) => (
-                    <div key={i} style={{fontSize:13,color:th.text,marginBottom:4}}>
-                      <b>{s.from}</b> → <b>{s.to}</b>: <span style={{fontWeight:700,color:th.accent}}>{fmt(s.amt)}</span>
-                    </div>
-                  ))}
-                </div>
-              : <div style={{fontSize:12,color:th.ok,marginTop:6}}>✅ Conti in pari.</div>
+            <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`}}>
+              {list.filter(p => anticipoOf(p)>0).map(p => {
+                const cr = creditoOf(p);
+                return (
+                  <div key={p.id} style={{fontSize:12,color:th.text,marginBottom:4}}>
+                    <b>{p.name}</b>:{" "}
+                    {cr>0
+                      ? <>quota coperta ✓ · <span style={{color:th.warn,fontWeight:700}}>deve incassare ancora {fmt(cr)}</span></>
+                      : anticipoOf(p)>=quota
+                        ? <span style={{color:th.ok,fontWeight:600}}>quota coperta ✓</span>
+                        : isPagata(p)
+                          ? <span style={{color:th.ok,fontWeight:600}}>saldata (anticipo {fmt(anticipoOf(p))} + resto) ✓</span>
+                          : <>restano <span style={{color:th.danger,fontWeight:700}}>{fmt(Math.max(0, quota - anticipoOf(p)))}</span> da versare</>}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
@@ -1145,16 +1147,23 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
         ? <div style={{textAlign:"center",padding:30,color:th.sub,fontSize:14}}>Nessuna persona ancora.<br/>Aggiungi chi deve versare la quota 💶</div>
         : <div>
             <div style={{...sectTitle(th),marginBottom:8}}>Persone ({list.length})</div>
-            {list.map(p => (
-              <div key={p.id} style={{...cardSt(th),marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-                <div onClick={() => togglePaid(p.id)} title={p.paid?"Quota versata":"In attesa"}
-                  style={{width:34,height:34,borderRadius:9,flexShrink:0,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,
-                    background:p.paid?th.ok:"transparent",border:`2px solid ${p.paid?th.ok:th.border}`,opacity:p.paid?1:0.4}}>💰</div>
-                <div style={{flex:1,fontSize:14,fontWeight:600,color:th.text}}>{p.name}</div>
-                <span style={{fontSize:13,fontWeight:700,color:p.paid?th.ok:th.sub}}>{quota>0?fmt(quota):""}</span>
-                <button onClick={() => removePerson(p.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:th.sub,padding:"4px"}}>✕</button>
-              </div>
-            ))}
+            {list.map(p => {
+              const auto = quota>0 && anticipoOf(p) >= quota; // quota coperta dall'anticipo: non si toglie a mano
+              const pg   = isPagata(p);
+              return (
+                <div key={p.id} style={{...cardSt(th),marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+                  <div onClick={() => !auto && togglePaid(p.id)} title={auto?"Quota coperta dall'anticipo":pg?"Quota versata":"In attesa"}
+                    style={{width:34,height:34,borderRadius:9,flexShrink:0,cursor:auto?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,
+                      background:pg?th.ok:"transparent",border:`2px solid ${pg?th.ok:th.border}`,opacity:pg?1:0.4}}>💰</div>
+                  <div style={{flex:1,fontSize:14,fontWeight:600,color:th.text}}>
+                    {p.name}
+                    {creditoOf(p)>0 && <div style={{fontSize:11,fontWeight:600,color:th.warn}}>deve incassare {fmt(creditoOf(p))}</div>}
+                  </div>
+                  <span style={{fontSize:13,fontWeight:700,color:pg?th.ok:th.sub}}>{quota>0?fmt(quota):""}</span>
+                  <button onClick={() => removePerson(p.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:th.sub,padding:"4px"}}>✕</button>
+                </div>
+              );
+            })}
           </div>
       }
     </div>
