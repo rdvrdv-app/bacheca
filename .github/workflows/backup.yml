@@ -15,7 +15,7 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           mkdir -p backup
-          TABLES=("events" "profiles" "activity_log" "telegram_subscriptions" "app_config")
+          TABLES=("events" "profiles" "activity_log" "telegram_subscriptions" "app_config" "ferie")
           for TABLE in "${TABLES[@]}"; do
             echo "Esportando $TABLE..."
             curl -s \
