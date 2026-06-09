@@ -4,6 +4,9 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Bacheca</title>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin/>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
+  <link rel="preconnect" href="https://divxqcadlishdfhpvixd.supabase.co" crossorigin/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -153,7 +156,7 @@ function DeadlineBadge({ deadline, th }) {
 
 function Avatar({ name, size = 32 }) {
   const initials = (name || "?").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
-  const color = AVATAR_COLORS[(name || "").charCodeAt(0) % AVATAR_COLORS.length];
+  const color = AVATAR_COLORS[(name || "?").charCodeAt(0) % AVATAR_COLORS.length];
   return (
     <div style={{width:size,height:size,borderRadius:"50%",background:color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.38,fontWeight:700,color:"#fff",flexShrink:0}}>
       {initials}
@@ -572,7 +575,8 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
         sb.from("activity_log").select("*").gte("created_at", cutoff).order("created_at",{ascending:false}).limit(200),
         sb.from("events").select("*").not("deleted_at","is",null).order("deleted_at",{ascending:false}),
       ]);
-      await sb.from("activity_log").delete().lt("created_at", cutoff);
+      // Pulizia log vecchi in background: non serve attenderla per mostrare il pannello
+      sb.from("activity_log").delete().lt("created_at", cutoff).then(() => {});
       setUsers(u.data||[]); setLogs(l.data||[]); setTrash(t.data||[]);
       setLoading(false);
     };
@@ -777,6 +781,17 @@ function CalGrid({ calDate, setCalDate, events, ferie, th, onDayClick }) {
     return arr;
   }, [y, m, first, days]);
 
+  // Mappa giorno → eventi del mese (evita di rifiltrare tutti gli eventi a ogni render di cella)
+  const eventsByDay = useMemo(() => {
+    const map = new Map();
+    for (let d = 1; d <= days; d++) {
+      const ds = toDateStr(y, m, d);
+      const evs = events.filter(e => eventCoversDay(e, ds));
+      if (evs.length) map.set(ds, evs);
+    }
+    return map;
+  }, [events, y, m, days]);
+
   // Giorni del mese in cui almeno una persona è in ferie (per la palma 🌴)
   const ferieDays = useMemo(() => {
     const s = new Set();
@@ -802,7 +817,7 @@ function CalGrid({ calDate, setCalDate, events, ferie, th, onDayClick }) {
           if (!d) return <div key={i}/>;
           const ds  = toDateStr(y, m, d);
           const isT = ds === ts;
-          const evs    = events.filter(e => eventCoversDay(e, ds));
+          const evs    = eventsByDay.get(ds) || [];
           const spans  = evs.filter(isMultiDay);
           const single = evs.filter(e => !isMultiDay(e));
           const hasF = ferieDays.has(ds);
@@ -1351,6 +1366,28 @@ function VoteView({ event, events, th, profile, user, onBack, onSubmit, saving }
   );
 }
 
+// ── Helper: ridimensiona un'immagine lato client (max px sul lato lungo) ──
+const resizeImageFile = (file, max, quality) => new Promise((resolve) => {
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > max || h > max) {
+        if (w > h) { h = Math.round(h * max / w); w = max; }
+        else       { w = Math.round(w * max / h); h = max; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL("image/jpeg", quality);
+      resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg", preview: dataUrl });
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
 // ── Helper: carica locandina su Supabase Storage ──────────────
 async function uploadFlyer(base64, mediaType, userId) {
   const ext = mediaType === "image/png" ? "png" : "jpg";
@@ -1371,32 +1408,10 @@ function ImportFromPostCard({ th, onImport, userId }) {
   const [msg,     setMsg]     = React.useState("");
   const fileRef = React.useRef(null);
 
-  const resizeImage = (file) => new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const MAX = 1024;
-        let w = img.width, h = img.height;
-        if (w > MAX || h > MAX) {
-          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-          else       { w = Math.round(w * MAX / h); h = MAX; }
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = w; canvas.height = h;
-        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-        resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg", preview: dataUrl });
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImgData(await resizeImage(file));
+    setImgData(await resizeImageFile(file, 1024, 0.85));
     setMsg("");
   };
 
@@ -1506,27 +1521,7 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
     if (!file || !userId) return;
     setFlyerUploading(true);
     try {
-      const resized = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const img = new Image();
-          img.onload = () => {
-            const MAX = 1200;
-            let w = img.width, h = img.height;
-            if (w > MAX || h > MAX) {
-              if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-              else       { w = Math.round(w * MAX / h); h = MAX; }
-            }
-            const canvas = document.createElement("canvas");
-            canvas.width = w; canvas.height = h;
-            canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
-            resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
-          };
-          img.src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
-      });
+      const resized = await resizeImageFile(file, 1200, 0.88);
       const url = await uploadFlyer(resized.base64, resized.mediaType, userId);
       setForm(f => ({...f, flyer_url: url}));
     } catch (err) {
@@ -1861,12 +1856,14 @@ function App() {
   const [ptrLoading, setPtrLoading] = useState(false);
   const ptrStartY = React.useRef(0);
   const ptrActive = React.useRef(false);
+  const toastTimer = React.useRef(null);
   const PTR_THRESHOLD = 70;
 
   const th = useMemo(() => dark ? DARK : LIGHT, [dark]);
 
   const toggleDark = () => setDark(d => { localStorage.setItem("bacheca_dark", d?"0":"1"); return !d; });
-  const showToast  = msg => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+  // Il timer precedente va annullato, altrimenti un toast vecchio nasconde quello nuovo in anticipo
+  const showToast  = msg => { setToast(msg); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 2500); };
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
