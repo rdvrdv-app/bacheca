@@ -32,13 +32,12 @@
 const { useState, useEffect, useCallback, useMemo } = React;
 
 // ── Config ────────────────────────────────────────────────────
-// ⚠️ BRANCH DEV → punta a "Bacheca-Dev" (ref: xgzmjxththubvpfwgsnu):
-//    i test NON toccano i dati di produzione.
-// Al momento del merge in main ripristinare PROD "Bacheca" (ref: divxqcadlishdfhpvixd):
-//   URL: https://divxqcadlishdfhpvixd.supabase.co
-//   KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpdnhxY2FkbGlzaGRmaHB2aXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4ODM4OTQsImV4cCI6MjA5NTQ1OTg5NH0.EqTuOJBLsrSIA1vK3eNP4YZnzR6_GxqO_TsEKaEfxYg
-const SUPABASE_URL = "https://xgzmjxththubvpfwgsnu.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhnem1qeHRodGh1YnZwZndnc251Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NjI4ODYsImV4cCI6MjA5NTUzODg4Nn0.hEacNTOkx7ZbjV67dlDbGSq4iD2H3cXF1D2ICBpXX64";
+// PRODUZIONE → progetto "Bacheca" (ref: divxqcadlishdfhpvixd).
+// Per testare su un branch dev puntare a "Bacheca-Dev" (ref: xgzmjxththubvpfwgsnu):
+//   URL: https://xgzmjxththubvpfwgsnu.supabase.co
+//   KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhnem1qeHRodGh1YnZwZndnc251Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NjI4ODYsImV4cCI6MjA5NTUzODg4Nn0.hEacNTOkx7ZbjV67dlDbGSq4iD2H3cXF1D2ICBpXX64
+const SUPABASE_URL = "https://divxqcadlishdfhpvixd.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpdnhxY2FkbGlzaGRmaHB2aXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4ODM4OTQsImV4cCI6MjA5NTQ1OTg5NH0.EqTuOJBLsrSIA1vK3eNP4YZnzR6_GxqO_TsEKaEfxYg";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Converte stringa vuota in null (per colonne date/time, evita "invalid input syntax")
