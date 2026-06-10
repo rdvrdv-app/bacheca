@@ -87,7 +87,7 @@ Trigger Postgres su `events`: `trigger_notify_new_event` e
 - Permessi modifica quote: **solo admin, creatore evento e delegato** (enforced
   nell'RPC `save_quotes`, non solo nel client).
 
-## Lista della spesa — costi (10-06-2026)
+## Lista Spesa — costi (10-06-2026)
 
 - Ogni articolo può avere un **costo facoltativo** (`cost`, numero in €, dentro il
   jsonb `shopping_list` — **nessuna migration necessaria**, l'RPC
@@ -145,6 +145,19 @@ ferie+locandine, esporta in Google Calendar/.ics, ricerca estesa a
 organizzatore/luogo, anticipi quote, supabase-js pinnato a 2.49.4), puntamento
 dev→Bacheca-Dev, preferenze notifiche per utente, fix contatore quote coperte
 e aggiunta rapida, switch Pages a GitHub Actions. Tutto deployato e funzionante.
+
+## Cose fatte il 10-06-2026 (sessione Lista Spesa)
+
+Tutto **deployato in prod**, branch dev `claude/cool-brown-g0f1j5` allineato:
+
+- Costi facoltativi per articolo (jsonb, nessuna migration) e totale speso.
+- Lista spesa ⇒ gestione quote sempre attiva (toggle bloccato).
+- "Assegnato a" con chips dei partecipanti all'evento (+ inserimento manuale).
+- A spesa completata: tasto "Vai a gestione quote" che travasa totale,
+  partecipanti e anticipi (costi pagati da ciascun assegnatario). Niente campo
+  "numero persone" nella lista: partecipanti e quota a persona si ritoccano
+  nelle quote. Dettagli nella sezione "Lista Spesa — costi" sopra.
+- Etichetta UI rinominata in "Lista Spesa".
 
 ## Da valutare in futuro
 
