@@ -99,8 +99,11 @@ Trigger Postgres su `events`: `trigger_notify_new_event` e
   riepilogo in fondo alla sezione "Acquistati" (con nota se alcuni articoli non
   hanno costo) e accanto al contatore nel pulsante 🛒 della scheda evento.
 - Se un articolo torna "da acquistare" il costo resta memorizzato ma esce dal totale.
-- Il totale **non** alimenta automaticamente "Totale spesa" della gestione quote
-  (lì resta inserimento manuale).
+- Sotto il totale c'è il calcolatore **"Dividi in parti uguali"**: numero di
+  persone inserito **a mano** (non derivato dalla lista né salvato) → mostra la
+  cifra a testa.
+- Il totale **non** alimenta la "Gestione quote", che resta separata per scelta:
+  è pensata per compleanni e acquisti di gruppo spot (biglietti concerti, teatro…).
 
 ## Realtime
 
