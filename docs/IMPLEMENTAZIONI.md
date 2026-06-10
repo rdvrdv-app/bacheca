@@ -67,6 +67,16 @@ decifrarlo con la passphrase e controllare i JSON).
 Fissato a `2.49.4`. Per aggiornare: cambiare il numero nel tag `<script>` di
 `index.html` e fare un giro di test (login, voto, upload locandina).
 
+## Notifiche Telegram (stato al 10-06-2026)
+
+- **Attive in PROD solo per**: evento creato / modificato / eliminato / ripristinato,
+  voto aggiunto, voto tolto. Lista spesa e gestione quote **non** notificano.
+- **Preferenze per utente**: nel profilo, due toggle per macro-funzionalità
+  ("Eventi" e "Voti") salvati in `telegram_subscriptions.prefs`. Default: tutto attivo.
+- **DEV sempre muta**: su Bacheca-Dev `notify_telegram` è un no-op.
+- I **promemoria giornalieri** (`event-reminders`) restano NON attivi ovunque.
+- SQL applicato: `supabase/migrations/20260610_notifiche_telegram_prefs.sql`.
+
 ## Note
 - `EVENT_CATEGORIES` e `ITALIAN_CITIES` in `index.html` sono ancora inutilizzati nel
   client: predisposti per la scoperta automatica eventi (`discovery_meta`, `source:"agent"`).
