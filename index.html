@@ -965,8 +965,6 @@ function ShoppingListView({ event, events, th, user, profile, onBack, onSave, on
   const canQuote = !!onGoQuote && e.gestione_quote && (e.created_by===user?.id || profile?.role==="admin" || e.quote_delegato===user?.id);
   const [items, setItems] = useState(e.shopping_list || []);
   const [ni,    setNi]    = useState({ name:"", qty:"", unit:"pz", assignee:"" });
-  // Calcolatore di divisione: numero di persone inserito a mano (non salvato)
-  const [nPers, setNPers] = useState("");
 
   const addItem = () => {
     if (!ni.name.trim()) return;
@@ -1003,7 +1001,8 @@ function ShoppingListView({ event, events, th, user, profile, onBack, onSave, on
     Object.values(speso).forEach(v => addNew(v.name));
     // Sovrascrive l'anticipo di chi ha pagato la spesa: il travaso è ripetibile senza doppi conteggi
     quote.forEach(p => { const v = speso[(p.name||"").toLowerCase()]; if (v) p.anticipo = v.tot; });
-    onGoQuote(e.id, { quote, quota_tot: totSpeso, quota_num: Math.floor(Number(nPers)) });
+    // Il numero di partecipanti parte dalle persone in lista quote: si ritocca lì se serve
+    onGoQuote(e.id, { quote, quota_tot: totSpeso, quota_num: quote.length });
   };
 
   return (
@@ -1055,31 +1054,18 @@ function ShoppingListView({ event, events, th, user, profile, onBack, onSave, on
           <div style={{...sectTitle(th),marginBottom:8}}>Acquistati ({done.length})</div>
           {done.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem} onCost={setCost}/>)}
           {withCost.length>0 && (
-            <div style={{...cardSt(th),marginTop:4}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                <div>
-                  <div style={{fontSize:14,fontWeight:700,color:th.text}}>💶 Totale speso</div>
-                  {withCost.length<done.length && <div style={{fontSize:11,color:th.sub,marginTop:2}}>{withCost.length} su {done.length} articoli acquistati hanno un costo</div>}
-                </div>
-                <div style={{fontSize:18,fontWeight:800,color:th.ok}}>{fmtEur(totSpeso)}</div>
+            <div style={{...cardSt(th),marginTop:4,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:th.text}}>💶 Totale speso</div>
+                {withCost.length<done.length && <div style={{fontSize:11,color:th.sub,marginTop:2}}>{withCost.length} su {done.length} articoli acquistati hanno un costo</div>}
               </div>
-              <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`}}>
-                <div style={{fontSize:13,fontWeight:700,color:th.text,marginBottom:6}}>➗ Dividi in parti uguali</div>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <input type="number" min="1" step="1" inputMode="numeric" value={nPers} onChange={ev => setNPers(ev.target.value)} placeholder="N. persone" style={{...inputSt(th),marginBottom:0,flex:1}}/>
-                  <div style={{flex:1,textAlign:"right"}}>
-                    {Number(nPers)>=1
-                      ? <><span style={{fontSize:18,fontWeight:800,color:th.accent}}>{fmtEur(totSpeso/Math.floor(Number(nPers)))}</span><span style={{fontSize:12,color:th.sub}}> a testa</span></>
-                      : <span style={{fontSize:12,color:th.sub}}>Inserisci in quanti dividete</span>}
-                  </div>
-                </div>
-                {canQuote && Number(nPers)>=1 && (
-                  <button onClick={goQuote} style={{...primBtn(th),width:"100%",marginTop:10}}>
-                    💶 Vai a gestione quote →
-                  </button>
-                )}
-              </div>
+              <div style={{fontSize:18,fontWeight:800,color:th.ok}}>{fmtEur(totSpeso)}</div>
             </div>
+          )}
+          {canQuote && pending.length===0 && (
+            <button onClick={goQuote} style={{...primBtn(th),width:"100%",marginTop:10}}>
+              💶 Vai a gestione quote →
+            </button>
           )}
         </div>
       )}

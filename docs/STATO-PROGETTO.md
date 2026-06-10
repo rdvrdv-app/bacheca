@@ -99,23 +99,23 @@ Trigger Postgres su `events`: `trigger_notify_new_event` e
   riepilogo in fondo alla sezione "Acquistati" (con nota se alcuni articoli non
   hanno costo) e accanto al contatore nel pulsante 🛒 della scheda evento.
 - Se un articolo torna "da acquistare" il costo resta memorizzato ma esce dal totale.
-- Sotto il totale c'è il calcolatore **"Dividi in parti uguali"**: numero di
-  persone inserito **a mano** (non derivato dalla lista né salvato) → mostra la
-  cifra a testa.
 - Il campo "Assegnato a" ha l'**aggiunta rapida dai partecipanti all'evento**
   (chips, come nelle quote); l'inserimento manuale di un nome resta possibile.
 - **Collegamento con la gestione quote (deciso il 10-06-2026, sostituisce la
   separazione iniziale)**: attivare la lista spesa **attiva sempre anche la
   gestione quote** (il toggle quote resta bloccato finché la lista è attiva; gli
-  eventi vecchi vengono normalizzati alla prima modifica). Dopo aver inserito il
-  numero di persone nel calcolatore compare il tasto **"Vai a gestione quote"**
-  che travasa: totale spesa → `quota_tot`, numero persone → `quota_num`,
-  **partecipanti all'evento → lista persone** delle quote (l'aggiunta manuale di
-  altri resta possibile lì) e **somma dei costi pagati da ciascun assegnatario →
-  anticipo** della persona (sovrascritto a ogni travaso: ripetibile senza doppi
-  conteggi; usa `save_quotes`, quindi tasto visibile **solo a owner, delegato o
-  admin**). La gestione quote da sola (senza lista) resta per compleanni e
-  acquisti spot (biglietti concerti, teatro…).
+  eventi vecchi vengono normalizzati alla prima modifica). **A spesa completata**
+  (nessun articolo "da acquistare") compare il tasto **"Vai a gestione quote"**
+  che travasa: totale spesa → `quota_tot`, **partecipanti all'evento → lista
+  persone** delle quote (l'aggiunta manuale di altri resta possibile lì),
+  numero persone in lista → `quota_num` (si ritocca nelle quote se serve, dove
+  si aggiorna la quota a persona) e **somma dei costi pagati da ciascun
+  assegnatario → anticipo** della persona (sovrascritto a ogni travaso:
+  ripetibile senza doppi conteggi; usa `save_quotes`, quindi tasto visibile
+  **solo a owner, delegato o admin**). Nella lista spesa non si inserisce più
+  alcun numero di persone (il calcolatore "Dividi in parti uguali" è stato
+  rimosso il 10-06-2026). La gestione quote da sola (senza lista) resta per
+  compleanni e acquisti spot (biglietti concerti, teatro…).
 - Etichetta UI rinominata da "Lista della spesa" a **"Lista Spesa"** (10-06-2026).
 
 ## Realtime

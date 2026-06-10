@@ -75,15 +75,15 @@ Sviluppato sul branch `claude/cool-brown-g0f1j5` (che punta a Bacheca-Dev):
   (facoltativo, si può saltare); l'importo è poi modificabile toccandolo.
 - **Totale speso** in fondo alla sezione "Acquistati" e nel pulsante 🛒 della
   scheda evento; conta solo gli articoli acquistati con costo inserito.
-- Calcolatore **"Dividi in parti uguali"** sotto il totale: si inserisce a mano
-  il numero di persone e mostra la cifra a testa (non salvato, solo calcolo).
 - **Lista spesa ⇒ gestione quote** (10-06-2026): attivare la lista attiva sempre
-  anche la gestione quote (toggle bloccato). Inserito il numero di persone nel
-  calcolatore, il tasto "Vai a gestione quote" travasa totale → `quota_tot`,
-  persone → `quota_num`, partecipanti all'evento → lista persone delle quote e
-  costi pagati da ciascun assegnatario → anticipi, poi apre la gestione quote
-  (solo owner/delegato/admin, passa da `save_quotes`). La gestione quote senza
-  lista resta per compleanni e acquisti spot (biglietti concerti, teatro…).
+  anche la gestione quote (toggle bloccato). **A spesa completata** il tasto
+  "Vai a gestione quote" travasa totale → `quota_tot`, partecipanti all'evento →
+  lista persone delle quote, persone in lista → `quota_num` (modificabile nelle
+  quote, dove si aggiorna la quota a persona) e costi pagati da ciascun
+  assegnatario → anticipi, poi apre la gestione quote (solo owner/delegato/admin,
+  passa da `save_quotes`). Nella lista spesa non c'è più alcun campo "numero
+  persone". La gestione quote senza lista resta per compleanni e acquisti spot
+  (biglietti concerti, teatro…).
 - "Assegnato a" con aggiunta rapida dai partecipanti all'evento (+ inserimento
   manuale); etichetta UI rinominata in **"Lista Spesa"**.
 - Dati: campo `cost` dentro il jsonb `shopping_list` — **nessuna migration,
