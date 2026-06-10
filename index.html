@@ -984,11 +984,32 @@ function ShoppingListView({ event, events, th, user, profile, onBack, onSave, on
   // Il totale conta solo gli articoli acquistati con un costo inserito
   const withCost = done.filter(i => i.cost != null);
   const totSpeso = withCost.reduce((s, i) => s + (Number(i.cost)||0), 0);
+  const participants = [...new Set(e.participants||[])].filter(Boolean);
+
+  // Travaso verso la gestione quote: porta dentro i partecipanti all'evento e
+  // tratta come anticipo ciò che ciascun assegnatario ha pagato per la spesa.
+  const goQuote = () => {
+    const speso = {};
+    done.forEach(i => {
+      const nm = (i.assignee||"").trim();
+      if (!nm || i.cost == null) return;
+      const k = nm.toLowerCase();
+      speso[k] = { name: speso[k]?.name || nm, tot: (speso[k]?.tot||0) + (Number(i.cost)||0) };
+    });
+    const quote = (e.quote||[]).map(p => ({...p}));
+    const have  = new Set(quote.map(p => (p.name||"").toLowerCase()));
+    const addNew = nm => { const k = nm.toLowerCase(); if (!have.has(k)) { quote.push({ id: Date.now()+Math.random(), name:nm, paid:false }); have.add(k); } };
+    participants.forEach(addNew);
+    Object.values(speso).forEach(v => addNew(v.name));
+    // Sovrascrive l'anticipo di chi ha pagato la spesa: il travaso è ripetibile senza doppi conteggi
+    quote.forEach(p => { const v = speso[(p.name||"").toLowerCase()]; if (v) p.anticipo = v.tot; });
+    onGoQuote(e.id, { quote, quota_tot: totSpeso, quota_num: Math.floor(Number(nPers)) });
+  };
 
   return (
     <div>
       <button onClick={onBack} style={backBtn(th)}>← Indietro</button>
-      <h2 style={{margin:"0 0 4px",fontSize:18,color:th.text}}>🛒 Lista della spesa</h2>
+      <h2 style={{margin:"0 0 4px",fontSize:18,color:th.text}}>🛒 Lista Spesa</h2>
       <div style={{fontSize:13,color:th.sub,marginBottom:16}}>{e.title}</div>
       <div style={{...cardSt(th),marginBottom:16}}>
         <div style={sectTitle(th)}>Aggiungi articolo</div>
@@ -1008,6 +1029,19 @@ function ShoppingListView({ event, events, th, user, profile, onBack, onSave, on
         </div>
         <label style={labelSt(th)}>Assegnato a</label>
         <input value={ni.assignee} onChange={ev => setNi(p => ({...p, assignee:ev.target.value}))} placeholder="Nome persona..." style={inputSt(th)}/>
+        {participants.length>0 && (
+          <div style={{marginTop:-6,marginBottom:12}}>
+            <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Aggiunta rapida (partecipanti all'evento):</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {participants.map(n => (
+                <button key={n} onClick={() => setNi(p => ({...p, assignee: p.assignee===n ? "" : n}))}
+                  style={{padding:"5px 11px",borderRadius:20,fontSize:12,cursor:"pointer",border:`1px solid ${ni.assignee===n?th.accent:th.border}`,background:ni.assignee===n?th.accent+"22":th.input,color:ni.assignee===n?th.accent:th.text,fontWeight:ni.assignee===n?700:400}}>
+                  {ni.assignee===n ? "✓" : "+"} {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <button onClick={addItem} style={{...primBtn(th),width:"100%"}}>+ Aggiungi</button>
       </div>
       {pending.length>0 && (
@@ -1040,7 +1074,7 @@ function ShoppingListView({ event, events, th, user, profile, onBack, onSave, on
                   </div>
                 </div>
                 {canQuote && Number(nPers)>=1 && (
-                  <button onClick={() => onGoQuote(e.id, { quota_tot: totSpeso, quota_num: Math.floor(Number(nPers)) })} style={{...primBtn(th),width:"100%",marginTop:10}}>
+                  <button onClick={goQuote} style={{...primBtn(th),width:"100%",marginTop:10}}>
                     💶 Vai a gestione quote →
                   </button>
                 )}
@@ -1432,7 +1466,7 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
 
       {e.lista_spesa && (
         <button onClick={() => onShopping(e)} style={{...btnSt(th),width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
-          <span style={{fontWeight:600,color:th.text}}>🛒 Lista della spesa</span>
+          <span style={{fontWeight:600,color:th.text}}>🛒 Lista Spesa</span>
           <span style={{fontSize:12,color:th.sub}}>{shCount===0?"Nulla ancora":`${shDone}/${shCount} acquistati${shTot>0?` · ${fmtEur(shTot)}`:""}`}</span>
         </button>
       )}
@@ -1742,7 +1776,7 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
 
       <div style={{display:"flex",gap:20,marginBottom:14,flexWrap:"wrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:13,color:th.text}}>🛒 Lista della spesa</span>
+          <span style={{fontSize:13,color:th.text}}>🛒 Lista Spesa</span>
           <Toggle value={form.listaSpesa} onChange={() => setForm(f => {
             const on = !f.listaSpesa;
             // La lista della spesa attiva sempre anche la gestione quote
@@ -2183,7 +2217,7 @@ function App() {
     if (!cmp(old.flyer_url||"", form.flyer_url||"")) changes.push("locandina");
     if (!cmp(old.status,   form.status))   changes.push("stato");
     if (!!(old.multiSelect||old.multi_select) !== !!form.multiSelect) changes.push("tipo selezione");
-    if (!!old.lista_spesa !== !!form.listaSpesa) changes.push("lista della spesa");
+    if (!!old.lista_spesa !== !!form.listaSpesa) changes.push("lista spesa");
     if (!!old.gestione_quote !== !!form.gestioneQuote) changes.push("gestione quote");
     if ((old.quote_delegato||"") !== (form.quoteDelegato||"")) changes.push("delegato quote");
     const oldVis = (old.visible_to||[]).slice().sort();
