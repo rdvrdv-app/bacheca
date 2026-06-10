@@ -20,7 +20,7 @@ spesa per evento, gestione quote con anticipi, notifiche Telegram.
 | Ambiente | Branch git | Progetto Supabase | Note |
 |---|---|---|---|
 | **PROD** | `main` | **"Bacheca"** `divxqcadlishdfhpvixd` | deploy automatico su Pages a ogni push (workflow "Build & Deploy Pages"; Pages è in modalità GitHub Actions) |
-| **DEV** | `claude/loving-hypatia-6gf955` (o branch dev futuri) | **"Bacheca-Dev"** `xgzmjxththubvpfwgsnu` | ambiente completo: stesse tabelle, bucket `event-flyers`, tutte le edge functions |
+| **DEV** | `claude/cool-brown-g0f1j5` (o branch dev futuri) | **"Bacheca-Dev"** `xgzmjxththubvpfwgsnu` | ambiente completo: stesse tabelle, bucket `event-flyers`, tutte le edge functions |
 
 - `index.html` contiene URL+chiave anon del progetto Supabase: **sul branch dev
   puntano a Bacheca-Dev, su main a Bacheca (prod)**. Le credenziali dell'altro
