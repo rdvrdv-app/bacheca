@@ -43,6 +43,8 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Converte stringa vuota in null (per colonne date/time, evita "invalid input syntax")
 const orNull = v => { const s = (v ?? "").toString().trim(); return s === "" ? null : s; };
 
+const fmtEur = v => "€ " + (Number(v)||0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 // ── Palette ───────────────────────────────────────────────────
 const LIGHT = {
   bg:"#FDF6F0", card:"#FFFFFF", border:"#F2E4D8", text:"#3A2E28", sub:"#A8897A",
@@ -214,22 +216,48 @@ function Toggle({ value, onChange, th }) {
   );
 }
 
-function ItemRow({ item, th, onToggle, onDelete }) {
-  const [confirm, setConfirm] = useState(false);
+function ItemRow({ item, th, onToggle, onDelete, onCost }) {
+  const [confirm, setConfirm]   = useState(false);
+  const [editCost, setEditCost] = useState(false);
+  const [costVal, setCostVal]   = useState("");
+
+  const openCost = () => { setCostVal(item.cost != null ? String(item.cost) : ""); setEditCost(true); setConfirm(false); };
+  const saveCost = () => {
+    const n = Number(costVal);
+    onCost(item.id, costVal.trim() === "" || isNaN(n) || n < 0 ? null : n);
+    setEditCost(false);
+  };
+  // Appena un articolo viene segnato come acquistato si chiede il costo (facoltativo)
+  const handleToggle = () => { onToggle(item.id); if (!item.done) openCost(); else setEditCost(false); };
+  const metaSep = (item.qty || item.assignee) ? " · " : "";
+
   return (
     <div style={{...cardSt(th), marginBottom: 8}}>
       <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <div onClick={() => onToggle(item.id)} style={{width:22,height:22,borderRadius:6,flexShrink:0,cursor:"pointer",border:`2px solid ${item.done?th.ok:th.accent}`,background:item.done?th.ok:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div onClick={handleToggle} style={{width:22,height:22,borderRadius:6,flexShrink:0,cursor:"pointer",border:`2px solid ${item.done?th.ok:th.accent}`,background:item.done?th.ok:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
           {item.done && <span style={{color:"#fff",fontSize:13,fontWeight:700}}>✓</span>}
         </div>
         <div style={{flex:1}}>
           <div style={{fontSize:14,fontWeight:600,color:item.done?th.sub:th.text,textDecoration:item.done?"line-through":"none"}}>{item.name}</div>
           <div style={{fontSize:12,color:th.sub,marginTop:2}}>
             {item.qty && `${item.qty} ${item.unit}`}{item.qty && item.assignee && " · "}{item.assignee && `👤 ${item.assignee}`}
+            {item.done && (item.cost != null
+              ? <span onClick={openCost} style={{cursor:"pointer",color:th.ok,fontWeight:700}}>{metaSep}💶 {fmtEur(item.cost)}</span>
+              : <span onClick={openCost} style={{cursor:"pointer",color:th.accent}}>{metaSep}💶 aggiungi costo</span>)}
           </div>
         </div>
         <button onClick={() => setConfirm(true)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:th.sub,padding:"4px"}}>✕</button>
       </div>
+      {editCost && (
+        <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`}}>
+          <div style={{fontSize:12,color:th.text,marginBottom:6}}>💶 Quanto è costato? <span style={{color:th.sub}}>(facoltativo)</span></div>
+          <div style={{display:"flex",gap:6}}>
+            <input type="number" min="0" step="any" inputMode="decimal" value={costVal} onChange={ev => setCostVal(ev.target.value)} placeholder="Es. 12.50" autoFocus style={{...inputSt(th),marginBottom:0,flex:1}}/>
+            <button onClick={saveCost} style={{...primBtn(th),fontSize:12,padding:"4px 12px"}}>Salva</button>
+            <button onClick={() => setEditCost(false)} style={{...btnSt(th),fontSize:12,padding:"4px 12px"}}>{item.cost != null ? "Annulla" : "Salta"}</button>
+          </div>
+        </div>
+      )}
       {confirm && (
         <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
           <span style={{fontSize:12,color:th.text}}>Eliminare <b>{item.name}</b>?</span>
@@ -946,8 +974,12 @@ function ShoppingListView({ event, events, th, onBack, onSave }) {
 
   const toggleDone = id => { const u = items.map(i => i.id===id ? {...i, done:!i.done} : i); setItems(u); onSave(e.id, u); };
   const deleteItem = id => { const u = items.filter(i => i.id!==id); setItems(u); onSave(e.id, u); };
+  const setCost    = (id, cost) => { const u = items.map(i => i.id===id ? {...i, cost} : i); setItems(u); onSave(e.id, u); };
   const pending = items.filter(i => !i.done);
   const done    = items.filter(i =>  i.done);
+  // Il totale conta solo gli articoli acquistati con un costo inserito
+  const withCost = done.filter(i => i.cost != null);
+  const totSpeso = withCost.reduce((s, i) => s + (Number(i.cost)||0), 0);
 
   return (
     <div>
@@ -977,13 +1009,22 @@ function ShoppingListView({ event, events, th, onBack, onSave }) {
       {pending.length>0 && (
         <div style={{marginBottom:16}}>
           <div style={{...sectTitle(th),marginBottom:8}}>Da acquistare ({pending.length})</div>
-          {pending.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem}/>)}
+          {pending.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem} onCost={setCost}/>)}
         </div>
       )}
       {done.length>0 && (
         <div>
           <div style={{...sectTitle(th),marginBottom:8}}>Acquistati ({done.length})</div>
-          {done.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem}/>)}
+          {done.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem} onCost={setCost}/>)}
+          {withCost.length>0 && (
+            <div style={{...cardSt(th),marginTop:4,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:th.text}}>💶 Totale speso</div>
+                {withCost.length<done.length && <div style={{fontSize:11,color:th.sub,marginTop:2}}>{withCost.length} su {done.length} articoli acquistati hanno un costo</div>}
+              </div>
+              <div style={{fontSize:18,fontWeight:800,color:th.ok}}>{fmtEur(totSpeso)}</div>
+            </div>
+          )}
         </div>
       )}
       {items.length===0 && <div style={{textAlign:"center",padding:30,color:th.sub,fontSize:14}}>Nessun articolo ancora.<br/>Aggiungi il primo! 🛒</div>}
@@ -1208,6 +1249,7 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
   const canManageQuote = e.gestione_quote && (isOwner || e.quote_delegato===user?.id);
   const shCount   = (e.shopping_list||[]).length;
   const shDone    = (e.shopping_list||[]).filter(i => i.done).length;
+  const shTot     = (e.shopping_list||[]).filter(i => i.done).reduce((s, i) => s + (Number(i.cost)||0), 0);
   const qCount    = (e.quote||[]).length;
   // Una quota è coperta se versata a mano (💰) o se l'anticipo la copre
   const evQuota   = (Number(e.quota_num)>0 && Number(e.quota_tot)>0) ? Number(e.quota_tot)/Number(e.quota_num) : 0;
@@ -1368,7 +1410,7 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
       {e.lista_spesa && (
         <button onClick={() => onShopping(e)} style={{...btnSt(th),width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
           <span style={{fontWeight:600,color:th.text}}>🛒 Lista della spesa</span>
-          <span style={{fontSize:12,color:th.sub}}>{shCount===0?"Nulla ancora":`${shDone}/${shCount} acquistati`}</span>
+          <span style={{fontSize:12,color:th.sub}}>{shCount===0?"Nulla ancora":`${shDone}/${shCount} acquistati${shTot>0?` · ${fmtEur(shTot)}`:""}`}</span>
         </button>
       )}
 

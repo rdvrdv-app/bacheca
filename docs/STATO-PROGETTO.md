@@ -87,6 +87,21 @@ Trigger Postgres su `events`: `trigger_notify_new_event` e
 - Permessi modifica quote: **solo admin, creatore evento e delegato** (enforced
   nell'RPC `save_quotes`, non solo nel client).
 
+## Lista della spesa — costi (10-06-2026)
+
+- Ogni articolo può avere un **costo facoltativo** (`cost`, numero in €, dentro il
+  jsonb `shopping_list` — **nessuna migration necessaria**, l'RPC
+  `save_shopping_list` salva il jsonb così com'è).
+- Quando un articolo viene **segnato come acquistato** si apre un campo inline
+  "Quanto è costato?" (si può saltare); il costo si modifica in seguito toccando
+  l'importo accanto all'articolo.
+- Il **totale speso** somma solo gli articoli acquistati con costo inserito:
+  riepilogo in fondo alla sezione "Acquistati" (con nota se alcuni articoli non
+  hanno costo) e accanto al contatore nel pulsante 🛒 della scheda evento.
+- Se un articolo torna "da acquistare" il costo resta memorizzato ma esce dal totale.
+- Il totale **non** alimenta automaticamente "Totale spesa" della gestione quote
+  (lì resta inserimento manuale).
+
 ## Realtime
 
 Attivo su prod e dev (publication `supabase_realtime` su `events` e `ferie`):

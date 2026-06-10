@@ -67,6 +67,18 @@ decifrarlo con la passphrase e controllare i JSON).
 Fissato a `2.49.4`. Per aggiornare: cambiare il numero nel tag `<script>` di
 `index.html` e fare un giro di test (login, voto, upload locandina).
 
+## Costi nella lista della spesa (10-06-2026)
+
+Sviluppato sul branch `claude/cool-brown-g0f1j5` (che punta a Bacheca-Dev):
+
+- Segnando un articolo come **acquistato** compare un campo inline per il costo
+  (facoltativo, si può saltare); l'importo è poi modificabile toccandolo.
+- **Totale speso** in fondo alla sezione "Acquistati" e nel pulsante 🛒 della
+  scheda evento; conta solo gli articoli acquistati con costo inserito.
+- Dati: campo `cost` dentro il jsonb `shopping_list` — **nessuna migration,
+  nessun passo manuale**. ✅ Attivo subito dopo il merge in `main` (ricordando
+  come sempre di ripristinare le credenziali Supabase di produzione in `index.html`).
+
 ## Notifiche Telegram (stato al 10-06-2026)
 
 - **Attive in PROD solo per**: evento creato / modificato / eliminato / ripristinato,
