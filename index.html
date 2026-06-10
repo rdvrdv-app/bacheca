@@ -1032,11 +1032,10 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
   const totAnticipi = list.reduce((s, p) => s + anticipoOf(p), 0);
 
   const already = new Set(list.map(p => (p.name||"").toLowerCase()));
+  // Aggiunta rapida: solo chi ha partecipato al sondaggio (inclusi gli accompagnatori)
   const candidates = useMemo(() => {
-    const fromPoll  = e.participants || [];
-    const fromUsers = (users || []).map(u => u.full_name || u.email);
-    return [...new Set([...fromPoll, ...fromUsers])].filter(n => n && !already.has(n.toLowerCase()));
-  }, [e.participants, users, list]);
+    return [...new Set(e.participants || [])].filter(n => n && !already.has(n.toLowerCase()));
+  }, [e.participants, list]);
 
   const paidList     = list.filter(isPagata);
   const unpaidList   = list.filter(p => !isPagata(p));
@@ -1075,6 +1074,10 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
       {quota>0 && list.length>0 && (
         <div style={{...cardSt(th),marginBottom:16}}>
           <div style={sectTitle(th)}>Riepilogo</div>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+            <span style={{fontSize:13,color:th.sub}}>Quote coperte</span>
+            <span style={{fontSize:14,fontWeight:700,color:paidList.length===list.length?th.ok:th.text}}>{paidList.length}/{list.length}</span>
+          </div>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
             <span style={{fontSize:13,color:th.sub}}>Incassato / anticipato</span>
             <span style={{fontSize:14,fontWeight:700,color:th.ok}}>{fmt(incassato)}</span>
@@ -1148,7 +1151,7 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
         </div>
         {candidates.length>0 && (
           <>
-            <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Aggiunta rapida (partecipanti / iscritti):</div>
+            <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Aggiunta rapida (partecipanti al sondaggio):</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               {candidates.map(n => (
                 <button key={n} onClick={() => addPerson(n)}
@@ -1206,7 +1209,9 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
   const shCount   = (e.shopping_list||[]).length;
   const shDone    = (e.shopping_list||[]).filter(i => i.done).length;
   const qCount    = (e.quote||[]).length;
-  const qPaid     = (e.quote||[]).filter(q => q.paid).length;
+  // Una quota è coperta se versata a mano (💰) o se l'anticipo la copre
+  const evQuota   = (Number(e.quota_num)>0 && Number(e.quota_tot)>0) ? Number(e.quota_tot)/Number(e.quota_num) : 0;
+  const qPaid     = (e.quote||[]).filter(q => q.paid || (evQuota>0 && (Number(q.anticipo)||0) >= evQuota)).length;
   const restricted = Array.isArray(e.visible_to) && e.visible_to.length > 0;
   const canManagePending = profile?.role==="admin" || e.created_by===user?.id;
 
