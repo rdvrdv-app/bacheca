@@ -102,8 +102,15 @@ Trigger Postgres su `events`: `trigger_notify_new_event` e
 - Sotto il totale c'è il calcolatore **"Dividi in parti uguali"**: numero di
   persone inserito **a mano** (non derivato dalla lista né salvato) → mostra la
   cifra a testa.
-- Il totale **non** alimenta la "Gestione quote", che resta separata per scelta:
-  è pensata per compleanni e acquisti di gruppo spot (biglietti concerti, teatro…).
+- **Collegamento con la gestione quote (deciso il 10-06-2026, sostituisce la
+  separazione iniziale)**: attivare la lista della spesa **attiva sempre anche la
+  gestione quote** (il toggle quote resta bloccato finché la lista è attiva; gli
+  eventi vecchi vengono normalizzati alla prima modifica). Dopo aver inserito il
+  numero di persone nel calcolatore compare il tasto **"Vai a gestione quote"**:
+  salva totale spesa → `quota_tot` e numero persone → `quota_num` (via
+  `save_quotes`, quindi visibile **solo a owner, delegato o admin**) e apre la
+  gestione quote. La gestione quote da sola (senza lista) resta per compleanni e
+  acquisti spot (biglietti concerti, teatro…).
 
 ## Realtime
 

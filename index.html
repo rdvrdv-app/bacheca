@@ -959,8 +959,10 @@ function SearchView({ events, th, onOpen, onBack }) {
 }
 
 // ── Shopping List ─────────────────────────────────────────────
-function ShoppingListView({ event, events, th, onBack, onSave }) {
+function ShoppingListView({ event, events, th, user, profile, onBack, onSave, onGoQuote }) {
   const e = events.find(x => x.id===event.id) || event;
+  // Il travaso verso la gestione quote usa l'RPC save_quotes: solo owner, delegato o admin
+  const canQuote = !!onGoQuote && e.gestione_quote && (e.created_by===user?.id || profile?.role==="admin" || e.quote_delegato===user?.id);
   const [items, setItems] = useState(e.shopping_list || []);
   const [ni,    setNi]    = useState({ name:"", qty:"", unit:"pz", assignee:"" });
   // Calcolatore di divisione: numero di persone inserito a mano (non salvato)
@@ -1037,6 +1039,11 @@ function ShoppingListView({ event, events, th, onBack, onSave }) {
                       : <span style={{fontSize:12,color:th.sub}}>Inserisci in quanti dividete</span>}
                   </div>
                 </div>
+                {canQuote && Number(nPers)>=1 && (
+                  <button onClick={() => onGoQuote(e.id, { quota_tot: totSpeso, quota_num: Math.floor(Number(nPers)) })} style={{...primBtn(th),width:"100%",marginTop:10}}>
+                    💶 Vai a gestione quote →
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1055,10 +1062,11 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
   const [tot,  setTot]  = useState(e.quota_tot || "");
   const [name, setName] = useState("");
 
-  // Il numero di partecipanti segue le persone in lista,
-  // ma resta modificabile a mano (l'avviso segnala le incongruenze).
+  // Il numero di partecipanti segue le persone in lista, ma resta modificabile
+  // a mano (l'avviso segnala le incongruenze). A lista vuota non si azzera:
+  // può arrivare precompilato dalla lista della spesa.
   useEffect(() => {
-    setNum(list.length ? String(list.length) : "");
+    if (list.length) setNum(String(list.length));
   }, [list.length]);
 
   const quota = (Number(num) > 0 && Number(tot) > 0) ? Number(tot) / Number(num) : 0;
@@ -1698,7 +1706,7 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
     status:      event?.status     || "open",
     multiSelect: event?.multiSelect || event?.multi_select || false,
     listaSpesa:  event?.lista_spesa || false,
-    gestioneQuote: event?.gestione_quote || false,
+    gestioneQuote: !!(event?.gestione_quote || event?.lista_spesa),
     quoteDelegato: event?.quote_delegato || "",
     publishNow:  event ? !event.pending_approval : true,
     options:     event?.options?.length ? [...event.options] : [""],
@@ -1735,11 +1743,16 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
       <div style={{display:"flex",gap:20,marginBottom:14,flexWrap:"wrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:13,color:th.text}}>🛒 Lista della spesa</span>
-          <Toggle value={form.listaSpesa} onChange={() => setForm(f => ({...f, listaSpesa:!f.listaSpesa}))} th={th}/>
+          <Toggle value={form.listaSpesa} onChange={() => setForm(f => {
+            const on = !f.listaSpesa;
+            // La lista della spesa attiva sempre anche la gestione quote
+            return {...f, listaSpesa: on, gestioneQuote: on ? true : f.gestioneQuote};
+          })} th={th}/>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:13,color:th.text}}>💶 Gestione quote</span>
-          <Toggle value={form.gestioneQuote} onChange={() => setForm(f => ({...f, gestioneQuote:!f.gestioneQuote, quoteDelegato:""}))} th={th}/>
+          <Toggle value={form.gestioneQuote} onChange={() => setForm(f => f.listaSpesa ? f : ({...f, gestioneQuote:!f.gestioneQuote, quoteDelegato:""}))} th={th}/>
+          {form.listaSpesa && <span style={{fontSize:11,color:th.sub}}>richiesta dalla lista</span>}
         </div>
       </div>
       {form.gestioneQuote && (
@@ -2303,9 +2316,10 @@ function App() {
     const quota_num = patch.quota_num !== undefined ? patch.quota_num : (cur.quota_num||0);
     const quota_tot = patch.quota_tot !== undefined ? patch.quota_tot : (cur.quota_tot||0);
     const { error } = await sb.rpc("save_quotes", { p_event_id:id, p_quote:quote, p_quota_num:Number(quota_num)||0, p_quota_tot:Number(quota_tot)||0 });
-    if (error) { showToast("❌ Errore salvataggio"); return; }
+    if (error) { showToast("❌ Errore salvataggio"); return false; }
     setEvents(p => p.map(e => e.id===id ? {...e, quote, quota_num, quota_tot} : e));
     showToast("💾 Salvato!");
+    return true;
   };
 
   const handleLogout = async () => { await sb.auth.signOut(); setView("calendar"); setTab("cal"); };
@@ -2324,7 +2338,7 @@ function App() {
     if (view==="event")    return <EventDetail event={selEvent} events={events} th={th} user={user} profile={profile} users={allUsers} onBack={() => setView("calendar")} onVote={() => setView("vote")} onToast={showToast} onStatusChange={handleStatusChange} onCancelVote={handleCancelVote} onDelete={handleDelete} onEdit={e => { setSelEvent(e); setView("edit"); }} onShopping={e => { setSelEvent(e); setView("shopping"); }} onQuote={e => { setSelEvent(e); setView("quote"); }} onPublish={handlePublish}/>;
     if (view==="vote")     return <VoteView event={selEvent} events={events} th={th} profile={profile} user={user} onBack={() => setView("event")} onSubmit={handleVote} saving={saving}/>;
     if (view==="edit")     return <EventForm event={selEvent} th={th} onBack={() => setView("event")} onSubmit={form => handleEdit(form, selEvent)} saving={saving} isEdit={true} profile={profile} users={allUsers} userId={user?.id}/>;
-    if (view==="shopping") return <ShoppingListView event={selEvent} events={events} th={th} onBack={() => setView("event")} onSave={handleShopSave}/>;
+    if (view==="shopping") return <ShoppingListView event={selEvent} events={events} th={th} user={user} profile={profile} onBack={() => setView("event")} onSave={handleShopSave} onGoQuote={async (id, patch) => { if (await handleQuoteSave(id, patch)) setView("quote"); }}/>;
     if (view==="quote")    return <QuoteView event={selEvent} events={events} th={th} users={allUsers} onBack={() => setView("event")} onSave={handleQuoteSave}/>;
     if (view==="profile")  return <ProfileView th={th} user={user} profile={profile} onBack={() => setView("calendar")} onLogout={handleLogout}/>;
     if (view==="admin")    return <AdminView th={th} user={user} onBack={() => setView("calendar")} showToast={showToast} pendingEvents={pendingEvents} onPublish={handlePublish} onEditEvent={e => { setSelEvent(e); setView("edit"); }} onDeleteEvent={handleDelete} trashRefresh={trashRefresh}/>;

@@ -77,8 +77,12 @@ Sviluppato sul branch `claude/cool-brown-g0f1j5` (che punta a Bacheca-Dev):
   scheda evento; conta solo gli articoli acquistati con costo inserito.
 - Calcolatore **"Dividi in parti uguali"** sotto il totale: si inserisce a mano
   il numero di persone e mostra la cifra a testa (non salvato, solo calcolo).
-  La gestione quote resta separata: serve per compleanni e acquisti spot
-  (biglietti concerti, teatro…), non per la spesa.
+- **Lista spesa ⇒ gestione quote** (10-06-2026): attivare la lista attiva sempre
+  anche la gestione quote (toggle bloccato). Inserito il numero di persone nel
+  calcolatore, il tasto "Vai a gestione quote" travasa totale → `quota_tot` e
+  persone → `quota_num` e apre la gestione quote (solo owner/delegato/admin,
+  passa da `save_quotes`). La gestione quote senza lista resta per compleanni e
+  acquisti spot (biglietti concerti, teatro…).
 - Dati: campo `cost` dentro il jsonb `shopping_list` — **nessuna migration,
   nessun passo manuale**. ✅ Attivo subito dopo il merge in `main` (ricordando
   come sempre di ripristinare le credenziali Supabase di produzione in `index.html`).
