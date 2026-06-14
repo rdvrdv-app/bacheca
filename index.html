@@ -487,12 +487,12 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
   const [name,  setName]  = useState(profile?.full_name || "");
   const [saved, setSaved] = useState(false);
   const [pass,  setPass]  = useState({ new1:"", new2:"", err:"", ok:false });
-  const [tg,    setTg]    = useState({ chatId:"", exists:false, saved:false, loading:true, err:"" });
+  const [tg,    setTg]    = useState({ chatId:"", exists:false, saved:false, loading:true, err:"", prefs:{ eventi:true, voti:true } });
 
   useEffect(() => {
-    sb.from("telegram_subscriptions").select("chat_id").eq("user_id", user.id).maybeSingle()
+    sb.from("telegram_subscriptions").select("chat_id,prefs").eq("user_id", user.id).maybeSingle()
       .then(({ data, error }) => {
-        if (!error && data) setTg(p => ({...p, chatId: data.chat_id, exists: true}));
+        if (!error && data) setTg(p => ({...p, chatId: data.chat_id, exists: true, prefs: { eventi:true, voti:true, ...(data.prefs||{}) }}));
         setTg(p => ({...p, loading: false}));
       });
   }, [user.id]);
@@ -516,12 +516,22 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
     if (!tg.chatId.trim()) return;
     setTg(p => ({...p, err:""}));
     const op = tg.exists
-      ? sb.from("telegram_subscriptions").update({ chat_id: tg.chatId }).eq("user_id", user.id)
-      : sb.from("telegram_subscriptions").insert({ user_id: user.id, chat_id: tg.chatId });
+      ? sb.from("telegram_subscriptions").update({ chat_id: tg.chatId, prefs: tg.prefs }).eq("user_id", user.id)
+      : sb.from("telegram_subscriptions").insert({ user_id: user.id, chat_id: tg.chatId, prefs: tg.prefs });
     const { error } = await op;
     if (error) { setTg(p => ({...p, err:"Errore: " + error.message})); return; }
     setTg(p => ({...p, exists:true, saved:true}));
     setTimeout(() => setTg(p => ({...p, saved:false})), 2000);
+  };
+
+  // Preferenze per macro-funzionalità: salvataggio immediato se l'iscrizione esiste già
+  const togglePref = async k => {
+    const prefs = {...tg.prefs, [k]: tg.prefs[k] === false};
+    setTg(p => ({...p, prefs}));
+    if (tg.exists) {
+      const { error } = await sb.from("telegram_subscriptions").update({ prefs }).eq("user_id", user.id);
+      if (error) setTg(p => ({...p, err:"Errore: " + error.message}));
+    }
   };
 
   const removeTg = async () => {
@@ -564,6 +574,15 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
           <>
             <label style={labelSt(th)}>Chat ID Telegram</label>
             <input value={tg.chatId} onChange={e => setTg(p => ({...p, chatId:e.target.value}))} placeholder="Es. 123456789" style={inputSt(th)}/>
+            <div style={{marginBottom:12}}>
+              <div style={{...labelSt(th),marginBottom:8}}>Quali notifiche ricevere</div>
+              {[["eventi","📅 Eventi (nuovi, modifiche, cancellazioni)"],["voti","🗳️ Voti (aggiunti e ritirati)"]].map(([k,l]) => (
+                <div key={k} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:8}}>
+                  <span style={{fontSize:13,color:th.text}}>{l}</span>
+                  <Toggle value={tg.prefs[k] !== false} onChange={() => togglePref(k)} th={th}/>
+                </div>
+              ))}
+            </div>
             {tg.err && <div style={{color:th.danger,fontSize:13,marginBottom:8}}>{tg.err}</div>}
             <div style={{display:"flex",gap:8}}>
               <button onClick={saveTg} style={{...primBtn(th),flex:1}}>{tg.saved ? "✅ Salvato!" : tg.exists ? "Aggiorna" : "Attiva notifiche"}</button>
