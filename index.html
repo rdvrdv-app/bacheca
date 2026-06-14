@@ -1148,6 +1148,7 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
   const setSection = s => { setSectionState(s); onSection && onSection(s); };
   const [loading, setLoading]= useState(true);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -1206,6 +1207,15 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
     await sb.from("events").delete().eq("id", id);
     setTrash(p => p.filter(e => e.id !== id));
     showToast("🗑️ Evento eliminato definitivamente");
+  };
+
+  const emptyTrash = async () => {
+    const ids = trash.map(e => e.id);
+    if (ids.length === 0) return;
+    await sb.from("events").delete().in("id", ids);
+    setTrash([]);
+    setConfirmEmptyTrash(false);
+    showToast("🗑️ Cestino svuotato");
   };
 
   const tabs = [["users","👥 Utenti"],["discover","🔍 Scopri"],["approve","✅ Approva"],["logs","📋 Attività"],["trash","🗑️ Cestino"]];
@@ -1286,6 +1296,19 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
               {l.details && <div style={{fontSize:11,color:th.sub,marginTop:4,fontStyle:"italic"}}>{l.details}</div>}
             </div>
           ))
+      )}
+
+      {!loading && section==="trash" && trash.length>0 && (
+        !confirmEmptyTrash
+          ? <button onClick={() => setConfirmEmptyTrash(true)} style={{...btnSt(th),width:"100%",marginBottom:12,color:th.danger,border:`1.5px solid ${th.danger}`,background:"transparent",fontWeight:600}}>🗑️ Svuota cestino ({trash.length})</button>
+          : <div style={{...cardSt(th),marginBottom:12,border:`1.5px solid ${th.danger}`}}>
+              <div style={{fontSize:14,color:th.text,marginBottom:6,fontWeight:600}}>Svuotare tutto il cestino?</div>
+              <div style={{fontSize:12,color:th.sub,marginBottom:14}}>Tutti i {trash.length} eventi nel cestino verranno eliminati definitivamente. L'operazione è irreversibile.</div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={() => setConfirmEmptyTrash(false)} style={{...btnSt(th),flex:1}}>Annulla</button>
+                <button onClick={emptyTrash} style={{...primBtn(th),flex:1,background:th.danger}}>Sì, svuota</button>
+              </div>
+            </div>
       )}
 
       {!loading && section==="trash" && (
@@ -1831,6 +1854,20 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
         </div>
       )}
 
+      {e.lista_spesa && (
+        <button onClick={() => onShopping(e)} style={{...btnSt(th),width:"100%",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
+          <span style={{fontWeight:600,color:th.text}}>🛒 Lista Spesa</span>
+          <span style={{fontSize:12,color:th.sub}}>{shCount===0?"Nulla ancora":`${shDone}/${shCount} acquistati${shTot>0?` · ${fmtEur(shTot)}`:""}`}</span>
+        </button>
+      )}
+
+      {canManageQuote && (
+        <button onClick={() => onQuote(e)} style={{...btnSt(th),width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
+          <span style={{fontWeight:600,color:th.text}}>💶 Gestione quote</span>
+          <span style={{fontSize:12,color:th.sub}}>{qCount===0?"Nessuno ancora":`💰 ${qPaid}/${qCount}`}</span>
+        </button>
+      )}
+
       <h2 style={{margin:"0 0 6px",fontSize:20,color:th.text,display:"flex",alignItems:"center",gap:8}}>
         {e.title}{restricted && <span title="Visibilità limitata" style={{fontSize:14}}>🔒</span>}
       </h2>
@@ -1943,20 +1980,6 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
             </div>
           )}
         </div>
-      )}
-
-      {e.lista_spesa && (
-        <button onClick={() => onShopping(e)} style={{...btnSt(th),width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
-          <span style={{fontWeight:600,color:th.text}}>🛒 Lista Spesa</span>
-          <span style={{fontSize:12,color:th.sub}}>{shCount===0?"Nulla ancora":`${shDone}/${shCount} acquistati${shTot>0?` · ${fmtEur(shTot)}`:""}`}</span>
-        </button>
-      )}
-
-      {canManageQuote && (
-        <button onClick={() => onQuote(e)} style={{...btnSt(th),width:"100%",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
-          <span style={{fontWeight:600,color:th.text}}>💶 Gestione quote</span>
-          <span style={{fontSize:12,color:th.sub}}>{qCount===0?"Nessuno ancora":`💰 ${qPaid}/${qCount}`}</span>
-        </button>
       )}
 
       {isOwner && (
@@ -2271,6 +2294,33 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
   return (
     <div>
       <button onClick={onBack} style={backBtn(th)}>← Indietro</button>
+
+      <div style={{display:"flex",gap:20,marginBottom:14,flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:13,color:th.text}}>🛒 Lista Spesa</span>
+          <Toggle value={form.listaSpesa} onChange={() => setForm(f => {
+            const on = !f.listaSpesa;
+            // La lista della spesa attiva sempre anche la gestione quote
+            return {...f, listaSpesa: on, gestioneQuote: on ? true : f.gestioneQuote};
+          })} th={th}/>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:13,color:th.text}}>💶 Gestione quote</span>
+          <Toggle value={form.gestioneQuote} onChange={() => setForm(f => f.listaSpesa ? f : ({...f, gestioneQuote:!f.gestioneQuote, quoteDelegato:""}))} th={th}/>
+        </div>
+      </div>
+      {form.gestioneQuote && (
+        <div style={{marginBottom:14}}>
+          <label style={labelSt(th)}>👤 Delegato raccolta quote <span style={{color:th.sub,fontWeight:400,textTransform:"none"}}>(opzionale)</span></label>
+          <select value={form.quoteDelegato} onChange={e => setForm(f => ({...f, quoteDelegato:e.target.value}))} style={{...inputSt(th),marginBottom:0}}>
+            <option value="">— Solo io (owner) —</option>
+            {users.filter(u => u.id !== userId).map(u => (
+              <option key={u.id} value={u.id}>{u.full_name || u.email}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <h2 style={{margin:"0 0 8px",fontSize:18,color:th.text}}>{isEdit ? "Modifica sondaggio" : "Nuovo sondaggio"}</h2>
       {isEdit && <div style={{fontSize:12,color:th.warn,marginBottom:16,padding:"6px 10px",background:th.warn+"18",borderRadius:8}}>⚠️ I voti esistenti verranno mantenuti.</div>}
       {!isEdit && <ImportFromPostCard th={th} userId={userId} onImport={patch => setForm(f => ({...f, ...patch}))}/>}
@@ -2334,32 +2384,6 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
           );
         })}
       </div>
-
-      <div style={{display:"flex",gap:20,marginBottom:14,flexWrap:"wrap"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:13,color:th.text}}>🛒 Lista Spesa</span>
-          <Toggle value={form.listaSpesa} onChange={() => setForm(f => {
-            const on = !f.listaSpesa;
-            // La lista della spesa attiva sempre anche la gestione quote
-            return {...f, listaSpesa: on, gestioneQuote: on ? true : f.gestioneQuote};
-          })} th={th}/>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:13,color:th.text}}>💶 Gestione quote</span>
-          <Toggle value={form.gestioneQuote} onChange={() => setForm(f => f.listaSpesa ? f : ({...f, gestioneQuote:!f.gestioneQuote, quoteDelegato:""}))} th={th}/>
-        </div>
-      </div>
-      {form.gestioneQuote && (
-        <div style={{marginBottom:14}}>
-          <label style={labelSt(th)}>👤 Delegato raccolta quote <span style={{color:th.sub,fontWeight:400,textTransform:"none"}}>(opzionale)</span></label>
-          <select value={form.quoteDelegato} onChange={e => setForm(f => ({...f, quoteDelegato:e.target.value}))} style={{...inputSt(th),marginBottom:0}}>
-            <option value="">— Solo io (owner) —</option>
-            {users.filter(u => u.id !== userId).map(u => (
-              <option key={u.id} value={u.id}>{u.full_name || u.email}</option>
-            ))}
-          </select>
-        </div>
-      )}
 
       {!form.multiDay ? (
         <>
