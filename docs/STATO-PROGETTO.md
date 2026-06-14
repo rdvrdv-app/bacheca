@@ -211,9 +211,26 @@ Tutto **deployato in prod** (`main`):
   Svuota cestino (N)"** con conferma, che elimina **definitivamente** in un colpo
   tutti gli eventi nel cestino (`delete ... in (ids)`).
 - Repo `bacheca-dev` **eliminato** (vedi *Ambienti*); resta il DB `Bacheca-Dev`.
+- **"Anticipi e saldi" comprimibile**: nella Gestione quote la sezione 💸 Anticipi
+  e saldi è collassata di default; si apre/chiude cliccando l'intestazione (mostra
+  il totale anticipato da chiuso). Stato `anticipiOpen` in `QuoteView`.
+- **Auto-eliminazione eventi passati (>1 settimana)**: gli eventi la cui data
+  effettiva (`end_date` o `date`) è più vecchia di 7 giorni vengono spostati nel
+  **cestino** (soft-delete, recuperabili 30gg). Implementato **client-side**: un
+  `useEffect` in `App` gira **solo sul client di un admin** dopo il caricamento
+  eventi, è idempotente e silenzioso. ⚠️ **Limite**: scatta solo quando un admin
+  apre l'app (non è un cron garantito). Per renderlo realmente server-side servirà
+  o `pg_cron` su Supabase **oppure** uno step nel workflow notturno `backup.yml`
+  (che ha già la `service_role` key) — vedi *Da valutare*.
 
 ## Da valutare in futuro
 
+- **Rendere l'auto-eliminazione eventi passati realmente automatica lato server**
+  (oggi è client-side, solo su apertura di un admin): opzione A — funzione SQL +
+  `pg_cron` (richiede approvazione MCP Supabase / accesso DDL); opzione B — uno
+  step `curl PATCH` nel job notturno `backup.yml` con la `service_role` key
+  (richiede però un PAT con scope **`workflow`** per modificare i file in
+  `.github/workflows/`).
 - Copiare nel repo le edge functions esistenti (`parse-event`, `delete-user`,
   `telegram-webhook`, `discover-events`) per averle sotto controllo versione.
 - `EVENT_CATEGORIES` e `ITALIAN_CITIES` in `index.html`: usati solo dalla

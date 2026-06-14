@@ -1631,6 +1631,7 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
   const [num,  setNum]  = useState(e.quota_num || "");
   const [tot,  setTot]  = useState(e.quota_tot || "");
   const [name, setName] = useState("");
+  const [anticipiOpen, setAnticipiOpen] = useState(false);
 
   // Il numero di partecipanti segue le persone in lista, ma resta modificabile
   // a mano (l'avviso segnala le incongruenze). A lista vuota non si azzera:
@@ -1741,8 +1742,12 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
 
       {quota>0 && list.length>0 && (
         <div style={{...cardSt(th),marginBottom:16}}>
-          <div style={sectTitle(th)}>💸 Anticipi e saldi</div>
-          <div style={{fontSize:11,color:th.sub,marginBottom:10,lineHeight:1.5}}>
+          <div onClick={() => setAnticipiOpen(o => !o)} style={{...sectTitle(th),display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",marginBottom:0}}>
+            <span>💸 Anticipi e saldi</span>
+            <span style={{fontSize:12,color:th.sub,fontWeight:600}}>{anticipiOpen ? "Comprimi ▲" : (totAnticipi>0 ? fmt(totAnticipi)+" ▼" : "Espandi ▼")}</span>
+          </div>
+          {anticipiOpen && (<>
+          <div style={{fontSize:11,color:th.sub,margin:"10px 0",lineHeight:1.5}}>
             Indica quanto ha <b>anticipato</b> ciascuno (es. chi ha pagato il ristorante). Se l'anticipo copre la quota, questa risulta pagata; l'eccedenza è da incassare.
           </div>
           {list.map(p => (
@@ -1773,6 +1778,7 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
               })}
             </div>
           )}
+          </>)}
         </div>
       )}
 
@@ -2707,6 +2713,21 @@ function App() {
   }, [user, profileLoaded]);
 
   useEffect(() => { if (auth==="app" && profileLoaded) loadEvents(); }, [auth, loadEvents, profileLoaded]);
+
+  // Pulizia automatica: gli eventi passati da più di 1 settimana finiscono nel
+  // cestino (soft-delete, recuperabili 30gg dall'admin). Gira solo sul client di
+  // un admin (le RLS impediscono agli altri di toccare eventi non propri) ed è
+  // idempotente: dopo lo spostamento il reload non trova più nulla e si ferma.
+  useEffect(() => {
+    if (profile?.role !== "admin" || !events.length) return;
+    const cutoff = new Date(Date.now() - 7*24*60*60*1000).toISOString().slice(0,10);
+    const staleIds = events.filter(e => { const d = e.end_date || e.date; return d && d < cutoff; }).map(e => e.id);
+    if (!staleIds.length) return;
+    (async () => {
+      const { error } = await sb.from("events").update({ deleted_at: new Date().toISOString() }).in("id", staleIds);
+      if (!error) { setTrashRefresh(n => n+1); await loadEvents(); }
+    })();
+  }, [events, profile, loadEvents]);
 
   const loadFerie = useCallback(async () => {
     if (!user) return;
