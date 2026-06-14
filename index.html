@@ -37,6 +37,9 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Converte stringa vuota in null (per colonne date/time, evita "invalid input syntax")
 const orNull = v => { const s = (v ?? "").toString().trim(); return s === "" ? null : s; };
 
+// Formatta un importo in euro (it-IT, due decimali)
+const fmtEur = v => "€ " + (Number(v)||0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 // ── Palette ───────────────────────────────────────────────────
 const LIGHT = {
   bg:"#FDF6F0", card:"#FFFFFF", border:"#F2E4D8", text:"#3A2E28", sub:"#A8897A",
@@ -156,22 +159,48 @@ function Toggle({ value, onChange, th }) {
   );
 }
 
-function ItemRow({ item, th, onToggle, onDelete }) {
-  const [confirm, setConfirm] = useState(false);
+function ItemRow({ item, th, onToggle, onDelete, onCost }) {
+  const [confirm, setConfirm]   = useState(false);
+  const [editCost, setEditCost] = useState(false);
+  const [costVal, setCostVal]   = useState("");
+
+  const openCost = () => { setCostVal(item.cost != null ? String(item.cost) : ""); setEditCost(true); setConfirm(false); };
+  const saveCost = () => {
+    const n = Number(costVal);
+    onCost(item.id, costVal.trim() === "" || isNaN(n) || n < 0 ? null : n);
+    setEditCost(false);
+  };
+  // Appena un articolo viene segnato come acquistato si chiede il costo (facoltativo)
+  const handleToggle = () => { onToggle(item.id); if (!item.done) openCost(); else setEditCost(false); };
+  const metaSep = (item.qty || item.assignee) ? " · " : "";
+
   return (
     <div style={{...cardSt(th), marginBottom: 8}}>
       <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <div onClick={() => onToggle(item.id)} style={{width:22,height:22,borderRadius:6,flexShrink:0,cursor:"pointer",border:`2px solid ${item.done?th.ok:th.accent}`,background:item.done?th.ok:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div onClick={handleToggle} style={{width:22,height:22,borderRadius:6,flexShrink:0,cursor:"pointer",border:`2px solid ${item.done?th.ok:th.accent}`,background:item.done?th.ok:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
           {item.done && <span style={{color:"#fff",fontSize:13,fontWeight:700}}>✓</span>}
         </div>
         <div style={{flex:1}}>
           <div style={{fontSize:14,fontWeight:600,color:item.done?th.sub:th.text,textDecoration:item.done?"line-through":"none"}}>{item.name}</div>
           <div style={{fontSize:12,color:th.sub,marginTop:2}}>
             {item.qty && `${item.qty} ${item.unit}`}{item.qty && item.assignee && " · "}{item.assignee && `👤 ${item.assignee}`}
+            {item.done && (item.cost != null
+              ? <span onClick={openCost} style={{cursor:"pointer",color:th.ok,fontWeight:700}}>{metaSep}💶 {fmtEur(item.cost)}</span>
+              : <span onClick={openCost} style={{cursor:"pointer",color:th.accent}}>{metaSep}💶 aggiungi costo</span>)}
           </div>
         </div>
         <button onClick={() => setConfirm(true)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:th.sub,padding:"4px"}}>✕</button>
       </div>
+      {editCost && (
+        <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`}}>
+          <div style={{fontSize:12,color:th.text,marginBottom:6}}>💶 Quanto è costato? <span style={{color:th.sub}}>(facoltativo)</span></div>
+          <div style={{display:"flex",gap:6}}>
+            <input type="number" min="0" step="any" inputMode="decimal" value={costVal} onChange={ev => setCostVal(ev.target.value)} placeholder="Es. 12.50" autoFocus style={{...inputSt(th),marginBottom:0,flex:1}}/>
+            <button onClick={saveCost} style={{...primBtn(th),fontSize:12,padding:"4px 12px"}}>Salva</button>
+            <button onClick={() => setEditCost(false)} style={{...btnSt(th),fontSize:12,padding:"4px 12px"}}>{item.cost != null ? "Annulla" : "Salta"}</button>
+          </div>
+        </div>
+      )}
       {confirm && (
         <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
           <span style={{fontSize:12,color:th.text}}>Eliminare <b>{item.name}</b>?</span>
@@ -1328,8 +1357,10 @@ function SearchView({ events, th, onOpen, onBack }) {
 }
 
 // ── Shopping List ─────────────────────────────────────────────
-function ShoppingListView({ event, events, th, onBack, onSave }) {
+function ShoppingListView({ event, events, th, user, profile, onBack, onSave, onGoQuote }) {
   const e = events.find(x => x.id===event.id) || event;
+  // Il travaso verso la gestione quote è riservato a owner, delegato o admin
+  const canQuote = !!onGoQuote && e.gestione_quote && (e.created_by===user?.id || profile?.role==="admin" || e.quote_delegato===user?.id);
   const [items, setItems] = useState(e.shopping_list || []);
   const [ni,    setNi]    = useState({ name:"", qty:"", unit:"pz", assignee:"" });
 
@@ -1343,8 +1374,34 @@ function ShoppingListView({ event, events, th, onBack, onSave }) {
 
   const toggleDone = id => { const u = items.map(i => i.id===id ? {...i, done:!i.done} : i); setItems(u); onSave(e.id, u); };
   const deleteItem = id => { const u = items.filter(i => i.id!==id); setItems(u); onSave(e.id, u); };
+  const setCost    = (id, cost) => { const u = items.map(i => i.id===id ? {...i, cost} : i); setItems(u); onSave(e.id, u); };
   const pending = items.filter(i => !i.done);
   const done    = items.filter(i =>  i.done);
+  // Il totale conta solo gli articoli acquistati con un costo inserito
+  const withCost = done.filter(i => i.cost != null);
+  const totSpeso = withCost.reduce((s, i) => s + (Number(i.cost)||0), 0);
+  const participants = [...new Set(e.participants||[])].filter(Boolean);
+
+  // Travaso verso la gestione quote: porta dentro i partecipanti all'evento e
+  // tratta come anticipo ciò che ciascun assegnatario ha pagato per la spesa.
+  const goQuote = () => {
+    const speso = {};
+    done.forEach(i => {
+      const nm = (i.assignee||"").trim();
+      if (!nm || i.cost == null) return;
+      const k = nm.toLowerCase();
+      speso[k] = { name: speso[k]?.name || nm, tot: (speso[k]?.tot||0) + (Number(i.cost)||0) };
+    });
+    const quote = (e.quote||[]).map(p => ({...p}));
+    const have  = new Set(quote.map(p => (p.name||"").toLowerCase()));
+    const addNew = nm => { const k = nm.toLowerCase(); if (!have.has(k)) { quote.push({ id: Date.now()+Math.random(), name:nm, paid:false }); have.add(k); } };
+    participants.forEach(addNew);
+    Object.values(speso).forEach(v => addNew(v.name));
+    // Sovrascrive l'anticipo di chi ha pagato la spesa: il travaso è ripetibile senza doppi conteggi
+    quote.forEach(p => { const v = speso[(p.name||"").toLowerCase()]; if (v) p.anticipo = v.tot; });
+    // Il numero di partecipanti parte dalle persone in lista quote: si ritocca lì se serve
+    onGoQuote(e.id, { quote, quota_tot: totSpeso, quota_num: quote.length });
+  };
 
   return (
     <div>
@@ -1369,18 +1426,45 @@ function ShoppingListView({ event, events, th, onBack, onSave }) {
         </div>
         <label style={labelSt(th)}>Assegnato a</label>
         <input value={ni.assignee} onChange={ev => setNi(p => ({...p, assignee:ev.target.value}))} placeholder="Nome persona..." style={inputSt(th)}/>
+        {participants.length>0 && (
+          <div style={{marginTop:-6,marginBottom:12}}>
+            <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Aggiunta rapida (partecipanti all'evento):</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {participants.map(n => (
+                <button key={n} onClick={() => setNi(p => ({...p, assignee: p.assignee===n ? "" : n}))}
+                  style={{padding:"5px 11px",borderRadius:20,fontSize:12,cursor:"pointer",border:`1px solid ${ni.assignee===n?th.accent:th.border}`,background:ni.assignee===n?th.accent+"22":th.input,color:ni.assignee===n?th.accent:th.text,fontWeight:ni.assignee===n?700:400}}>
+                  {ni.assignee===n ? "✓" : "+"} {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <button onClick={addItem} style={{...primBtn(th),width:"100%"}}>+ Aggiungi</button>
       </div>
       {pending.length>0 && (
         <div style={{marginBottom:16}}>
           <div style={{...sectTitle(th),marginBottom:8}}>Da acquistare ({pending.length})</div>
-          {pending.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem}/>)}
+          {pending.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem} onCost={setCost}/>)}
         </div>
       )}
       {done.length>0 && (
         <div>
           <div style={{...sectTitle(th),marginBottom:8}}>Acquistati ({done.length})</div>
-          {done.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem}/>)}
+          {done.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem} onCost={setCost}/>)}
+          {withCost.length>0 && (
+            <div style={{...cardSt(th),marginTop:4,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:th.text}}>💶 Totale speso</div>
+                {withCost.length<done.length && <div style={{fontSize:11,color:th.sub,marginTop:2}}>{withCost.length} su {done.length} articoli acquistati hanno un costo</div>}
+              </div>
+              <div style={{fontSize:18,fontWeight:800,color:th.ok}}>{fmtEur(totSpeso)}</div>
+            </div>
+          )}
+          {canQuote && pending.length===0 && (
+            <button onClick={goQuote} style={{...primBtn(th),width:"100%",marginTop:10}}>
+              💶 Vai a gestione quote →
+            </button>
+          )}
         </div>
       )}
       {items.length===0 && <div style={{textAlign:"center",padding:30,color:th.sub,fontSize:14}}>Nessun articolo ancora.<br/>Aggiungi il primo! 🛒</div>}
@@ -1396,10 +1480,11 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
   const [tot,  setTot]  = useState(e.quota_tot || "");
   const [name, setName] = useState("");
 
-  // Il numero di partecipanti segue le persone in lista,
-  // ma resta modificabile a mano (l'avviso segnala le incongruenze).
+  // Il numero di partecipanti segue le persone in lista, ma resta modificabile
+  // a mano (l'avviso segnala le incongruenze). A lista vuota non si azzera:
+  // può arrivare precompilato dalla lista della spesa.
   useEffect(() => {
-    setNum(list.length ? String(list.length) : "");
+    if (list.length) setNum(String(list.length));
   }, [list.length]);
 
   const quota = (Number(num) > 0 && Number(tot) > 0) ? Number(tot) / Number(num) : 0;
@@ -1416,18 +1501,29 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
   };
   const togglePaid   = id => persist(list.map(p => p.id===id ? {...p, paid:!p.paid} : p));
   const removePerson = id => persist(list.filter(p => p.id!==id));
+  // Anticipi: aggiornamento locale durante la digitazione, salvataggio al blur
+  const setAnticipo  = (id, v) => setList(l => l.map(p => p.id===id ? {...p, anticipo: v} : p));
+
+  // Regola anticipi: l'anticipo copre la quota. Se la supera, la quota risulta pagata
+  // e l'eccedenza è un credito da incassare (da chi è irrilevante).
+  // Il toggle 💰 indica che la persona ha saldato a mano il dovuto residuo.
+  const anticipoOf = p => Number(p.anticipo)||0;
+  const isPagata   = p => !!p.paid || (quota>0 && anticipoOf(p) >= quota);
+  const contributo = p => isPagata(p) ? Math.max(quota, anticipoOf(p)) : anticipoOf(p);
+  const creditoOf  = p => Math.max(0, anticipoOf(p) - quota);
+  const totAnticipi = list.reduce((s, p) => s + anticipoOf(p), 0);
 
   const already = new Set(list.map(p => (p.name||"").toLowerCase()));
+  // Aggiunta rapida: solo chi ha partecipato al sondaggio (inclusi gli accompagnatori)
   const candidates = useMemo(() => {
-    const fromPoll  = e.participants || [];
-    const fromUsers = (users || []).map(u => u.full_name || u.email);
-    return [...new Set([...fromPoll, ...fromUsers])].filter(n => n && !already.has(n.toLowerCase()));
-  }, [e.participants, users, list]);
+    return [...new Set(e.participants || [])].filter(n => n && !already.has(n.toLowerCase()));
+  }, [e.participants, list]);
 
-  const paidList    = list.filter(p => p.paid);
-  const unpaidList  = list.filter(p => !p.paid);
-  const incassato   = paidList.length * quota;
-  const daIncassare = unpaidList.length * quota;
+  const paidList     = list.filter(isPagata);
+  const unpaidList   = list.filter(p => !isPagata(p));
+  const incassato    = quota>0 ? list.reduce((s, p) => s + contributo(p), 0) : 0;
+  const daIncassare  = quota>0 ? unpaidList.reduce((s, p) => s + Math.max(0, quota - anticipoOf(p)), 0) : 0;
+  const daRestituire = quota>0 ? list.reduce((s, p) => s + creditoOf(p), 0) : 0;
 
   return (
     <div>
@@ -1461,13 +1557,23 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
         <div style={{...cardSt(th),marginBottom:16}}>
           <div style={sectTitle(th)}>Riepilogo</div>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-            <span style={{fontSize:13,color:th.sub}}>Incassato</span>
+            <span style={{fontSize:13,color:th.sub}}>Quote coperte</span>
+            <span style={{fontSize:14,fontWeight:700,color:paidList.length===list.length?th.ok:th.text}}>{paidList.length}/{list.length}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+            <span style={{fontSize:13,color:th.sub}}>Incassato / anticipato</span>
             <span style={{fontSize:14,fontWeight:700,color:th.ok}}>{fmt(incassato)}</span>
           </div>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:unpaidList.length?10:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
             <span style={{fontSize:13,color:th.sub}}>Ancora da incassare</span>
             <span style={{fontSize:14,fontWeight:700,color:daIncassare>0?th.danger:th.sub}}>{fmt(daIncassare)}</span>
           </div>
+          {daRestituire>0 && (
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{fontSize:13,color:th.sub}}>Da restituire (anticipi extra)</span>
+              <span style={{fontSize:14,fontWeight:700,color:th.warn}}>{fmt(daRestituire)}</span>
+            </div>
+          )}
           {unpaidList.length>0 && (
             <div style={{paddingTop:10,borderTop:`1px solid ${th.border}`}}>
               <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Mancano da:</div>
@@ -1476,6 +1582,43 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
                   <span key={p.id} style={{padding:"3px 10px",borderRadius:20,fontSize:12,background:th.danger+"22",color:th.danger,fontWeight:600}}>{p.name}</span>
                 ))}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {quota>0 && list.length>0 && (
+        <div style={{...cardSt(th),marginBottom:16}}>
+          <div style={sectTitle(th)}>💸 Anticipi e saldi</div>
+          <div style={{fontSize:11,color:th.sub,marginBottom:10,lineHeight:1.5}}>
+            Indica quanto ha <b>anticipato</b> ciascuno (es. chi ha pagato il ristorante). Se l'anticipo copre la quota, questa risulta pagata; l'eccedenza è da incassare.
+          </div>
+          {list.map(p => (
+            <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <span style={{flex:1,fontSize:13,color:th.text,fontWeight:600}}>{p.name}</span>
+              <input type="number" min="0" step="any" value={p.anticipo ?? ""} placeholder="0"
+                onChange={ev => setAnticipo(p.id, ev.target.value)} onBlur={() => persist(list)}
+                style={{...inputSt(th),marginBottom:0,width:110,textAlign:"right"}}/>
+              <span style={{fontSize:13,color:th.sub}}>€</span>
+            </div>
+          ))}
+          {totAnticipi>0 && (
+            <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`}}>
+              {list.filter(p => anticipoOf(p)>0).map(p => {
+                const cr = creditoOf(p);
+                return (
+                  <div key={p.id} style={{fontSize:12,color:th.text,marginBottom:4}}>
+                    <b>{p.name}</b>:{" "}
+                    {cr>0
+                      ? <>quota coperta ✓ · <span style={{color:th.warn,fontWeight:700}}>deve incassare ancora {fmt(cr)}</span></>
+                      : anticipoOf(p)>=quota
+                        ? <span style={{color:th.ok,fontWeight:600}}>quota coperta ✓</span>
+                        : isPagata(p)
+                          ? <span style={{color:th.ok,fontWeight:600}}>saldata (anticipo {fmt(anticipoOf(p))} + resto) ✓</span>
+                          : <>restano <span style={{color:th.danger,fontWeight:700}}>{fmt(Math.max(0, quota - anticipoOf(p)))}</span> da versare</>}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1490,7 +1633,7 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
         </div>
         {candidates.length>0 && (
           <>
-            <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Aggiunta rapida (partecipanti / iscritti):</div>
+            <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Aggiunta rapida (partecipanti al sondaggio):</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               {candidates.map(n => (
                 <button key={n} onClick={() => addPerson(n)}
@@ -1507,16 +1650,23 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
         ? <div style={{textAlign:"center",padding:30,color:th.sub,fontSize:14}}>Nessuna persona ancora.<br/>Aggiungi chi deve versare la quota 💶</div>
         : <div>
             <div style={{...sectTitle(th),marginBottom:8}}>Persone ({list.length})</div>
-            {list.map(p => (
-              <div key={p.id} style={{...cardSt(th),marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-                <div onClick={() => togglePaid(p.id)} title={p.paid?"Quota versata":"In attesa"}
-                  style={{width:34,height:34,borderRadius:9,flexShrink:0,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,
-                    background:p.paid?th.ok:"transparent",border:`2px solid ${p.paid?th.ok:th.border}`,opacity:p.paid?1:0.4}}>💰</div>
-                <div style={{flex:1,fontSize:14,fontWeight:600,color:th.text}}>{p.name}</div>
-                <span style={{fontSize:13,fontWeight:700,color:p.paid?th.ok:th.sub}}>{quota>0?fmt(quota):""}</span>
-                <button onClick={() => removePerson(p.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:th.sub,padding:"4px"}}>✕</button>
-              </div>
-            ))}
+            {list.map(p => {
+              const auto = quota>0 && anticipoOf(p) >= quota; // quota coperta dall'anticipo: non si toglie a mano
+              const pg   = isPagata(p);
+              return (
+                <div key={p.id} style={{...cardSt(th),marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+                  <div onClick={() => !auto && togglePaid(p.id)} title={auto?"Quota coperta dall'anticipo":pg?"Quota versata":"In attesa"}
+                    style={{width:34,height:34,borderRadius:9,flexShrink:0,cursor:auto?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,
+                      background:pg?th.ok:"transparent",border:`2px solid ${pg?th.ok:th.border}`,opacity:pg?1:0.4}}>💰</div>
+                  <div style={{flex:1,fontSize:14,fontWeight:600,color:th.text}}>
+                    {p.name}
+                    {creditoOf(p)>0 && <div style={{fontSize:11,fontWeight:600,color:th.warn}}>deve incassare {fmt(creditoOf(p))}</div>}
+                  </div>
+                  <span style={{fontSize:13,fontWeight:700,color:pg?th.ok:th.sub}}>{quota>0?fmt(quota):""}</span>
+                  <button onClick={() => removePerson(p.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:th.sub,padding:"4px"}}>✕</button>
+                </div>
+              );
+            })}
           </div>
       }
     </div>
@@ -1540,8 +1690,11 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
   const canManageQuote = e.gestione_quote && (isOwner || e.quote_delegato===user?.id);
   const shCount   = (e.shopping_list||[]).length;
   const shDone    = (e.shopping_list||[]).filter(i => i.done).length;
+  const shTot     = (e.shopping_list||[]).filter(i => i.done).reduce((s, i) => s + (Number(i.cost)||0), 0);
   const qCount    = (e.quote||[]).length;
-  const qPaid     = (e.quote||[]).filter(q => q.paid).length;
+  // Una quota è coperta se versata a mano (💰) o se l'anticipo la copre
+  const evQuota   = (Number(e.quota_num)>0 && Number(e.quota_tot)>0) ? Number(e.quota_tot)/Number(e.quota_num) : 0;
+  const qPaid     = (e.quote||[]).filter(q => q.paid || (evQuota>0 && (Number(q.anticipo)||0) >= evQuota)).length;
   const restricted = Array.isArray(e.visible_to) && e.visible_to.length > 0;
   const canManagePending = profile?.role==="admin" || e.created_by===user?.id;
 
@@ -1635,20 +1788,6 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
       {e.flyer_url  && <img src={e.flyer_url} alt="Locandina" style={{width:"100%",borderRadius:12,marginBottom:12,objectFit:"contain",maxHeight:320,background:th.input}}/>}
       {e.social     && <div style={{...cardSt(th),marginBottom:12}}><div style={{fontSize:12,color:th.sub,marginBottom:4}}>🔗 Link social</div><a href={e.social} target="_blank" rel="noreferrer" style={{fontSize:13,color:th.accent,wordBreak:"break-all"}}>{e.social}</a></div>}
 
-      {e.lista_spesa && (
-        <button onClick={() => onShopping(e)} style={{...btnSt(th),width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
-          <span style={{fontWeight:600,color:th.text}}>🛒 Lista della spesa</span>
-          <span style={{fontSize:12,color:th.sub}}>{shCount===0?"Nulla ancora":`${shDone}/${shCount} acquistati`}</span>
-        </button>
-      )}
-
-      {canManageQuote && (
-        <button onClick={() => onQuote(e)} style={{...btnSt(th),width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
-          <span style={{fontWeight:600,color:th.text}}>💶 Gestione quote</span>
-          <span style={{fontSize:12,color:th.sub}}>{qCount===0?"Nessuno ancora":`💰 ${qPaid}/${qCount}`}</span>
-        </button>
-      )}
-
       <div style={{...cardSt(th),marginBottom:12}}>
         <div style={sectTitle(th)}>Risultati sondaggio</div>
         {(e.options||[]).map(o => {
@@ -1700,6 +1839,20 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
             </div>
           )}
         </div>
+      )}
+
+      {e.lista_spesa && (
+        <button onClick={() => onShopping(e)} style={{...btnSt(th),width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
+          <span style={{fontWeight:600,color:th.text}}>🛒 Lista della spesa</span>
+          <span style={{fontSize:12,color:th.sub}}>{shCount===0?"Nulla ancora":`${shDone}/${shCount} acquistati${shTot>0?` · ${fmtEur(shTot)}`:""}`}</span>
+        </button>
+      )}
+
+      {canManageQuote && (
+        <button onClick={() => onQuote(e)} style={{...btnSt(th),width:"100%",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
+          <span style={{fontWeight:600,color:th.text}}>💶 Gestione quote</span>
+          <span style={{fontSize:12,color:th.sub}}>{qCount===0?"Nessuno ancora":`💰 ${qPaid}/${qCount}`}</span>
+        </button>
       )}
 
       {isOwner && (
@@ -2011,11 +2164,15 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
       <div style={{display:"flex",gap:20,marginBottom:14,flexWrap:"wrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:13,color:th.text}}>🛒 Lista della spesa</span>
-          <Toggle value={form.listaSpesa} onChange={() => setForm(f => ({...f, listaSpesa:!f.listaSpesa}))} th={th}/>
+          <Toggle value={form.listaSpesa} onChange={() => setForm(f => {
+            const on = !f.listaSpesa;
+            // La lista della spesa attiva sempre anche la gestione quote
+            return {...f, listaSpesa: on, gestioneQuote: on ? true : f.gestioneQuote};
+          })} th={th}/>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:13,color:th.text}}>💶 Gestione quote</span>
-          <Toggle value={form.gestioneQuote} onChange={() => setForm(f => ({...f, gestioneQuote:!f.gestioneQuote, quoteDelegato:""}))} th={th}/>
+          <Toggle value={form.gestioneQuote} onChange={() => setForm(f => f.listaSpesa ? f : ({...f, gestioneQuote:!f.gestioneQuote, quoteDelegato:""}))} th={th}/>
         </div>
       </div>
       {form.gestioneQuote && (
@@ -2519,9 +2676,10 @@ function App() {
 
   const handleQuoteSave = async (id, patch) => {
     const { error } = await sb.from("events").update(patch).eq("id", id);
-    if (error) { showToast("❌ Errore salvataggio"); return; }
+    if (error) { showToast("❌ Errore salvataggio"); return false; }
     setEvents(p => p.map(e => e.id===id ? {...e, ...patch} : e));
     showToast("💾 Salvato!");
+    return true;
   };
 
   const handleLogout = async () => { await sb.auth.signOut(); setView("calendar"); setTab("cal"); };
@@ -2540,7 +2698,7 @@ function App() {
     if (view==="event")    return <EventDetail event={selEvent} events={events} th={th} user={user} profile={profile} users={allUsers} onBack={() => setView("calendar")} onVote={() => setView("vote")} onToast={showToast} onStatusChange={handleStatusChange} onCancelVote={handleCancelVote} onDelete={handleDelete} onEdit={e => { setEditFrom("event"); setSelEvent(e); setView("edit"); }} onShopping={e => { setSelEvent(e); setView("shopping"); }} onQuote={e => { setSelEvent(e); setView("quote"); }} onPublish={handlePublish}/>;
     if (view==="vote")     return <VoteView event={selEvent} events={events} th={th} profile={profile} user={user} onBack={() => setView("event")} onSubmit={handleVote} saving={saving}/>;
     if (view==="edit")     return <EventForm event={selEvent} th={th} onBack={() => setView(editFrom==="admin" ? "admin" : "event")} onSubmit={form => handleEdit(form, selEvent)} saving={saving} isEdit={true} profile={profile} users={allUsers} userId={user?.id}/>;
-    if (view==="shopping") return <ShoppingListView event={selEvent} events={events} th={th} onBack={() => setView("event")} onSave={handleShopSave}/>;
+    if (view==="shopping") return <ShoppingListView event={selEvent} events={events} th={th} user={user} profile={profile} onBack={() => setView("event")} onSave={handleShopSave} onGoQuote={async (id, patch) => { if (await handleQuoteSave(id, patch)) setView("quote"); }}/>;
     if (view==="quote")    return <QuoteView event={selEvent} events={events} th={th} users={allUsers} onBack={() => setView("event")} onSave={handleQuoteSave}/>;
     if (view==="profile")  return <ProfileView th={th} user={user} profile={profile} onBack={() => setView("calendar")} onLogout={handleLogout}/>;
     if (view==="admin")    return <AdminView th={th} user={user} onBack={() => setView("calendar")} showToast={showToast} pendingEvents={pendingEvents} onPublish={handlePublish} onEditEvent={e => { setEditFrom("admin"); setSelEvent(e); setView("edit"); }} onDeleteEvent={handleDelete} trashRefresh={trashRefresh} initialSection={adminSection} onSection={setAdminSection}/>;
