@@ -1,4 +1,4 @@
-# Bacheca — Stato del progetto (10-06-2026)
+# Bacheca — Stato del progetto (14-06-2026)
 
 Documento di contesto per riprendere il lavoro in una nuova chat.
 
@@ -17,17 +17,22 @@ spesa per evento, gestione quote con anticipi, notifiche Telegram.
 
 ## Ambienti — REGOLA FONDAMENTALE
 
-| Ambiente | Branch git | Progetto Supabase | Note |
+| Ambiente | Dove | Progetto Supabase | Note |
 |---|---|---|---|
-| **PROD** | `main` | **"Bacheca"** `divxqcadlishdfhpvixd` | deploy automatico su Pages a ogni push (workflow "Build & Deploy Pages"; Pages è in modalità GitHub Actions) |
-| **DEV** | `claude/cool-brown-g0f1j5` (o branch dev futuri) | **"Bacheca-Dev"** `xgzmjxththubvpfwgsnu` | ambiente completo: stesse tabelle, bucket `event-flyers`, tutte le edge functions |
+| **PROD** | repo `rdvrdv-app/bacheca`, branch `main` | **"Bacheca"** `divxqcadlishdfhpvixd` | deploy automatico su Pages a ogni push (workflow "Build & Deploy Pages"; Pages in modalità GitHub Actions) |
+| **DEV (test)** | feature branch nel repo prod | **"Bacheca-Dev"** `xgzmjxththubvpfwgsnu` | DB sandbox: stesse tabelle/bucket/edge functions; ci si punta temporaneamente per provare modifiche rischiose |
 
-- `index.html` contiene URL+chiave anon del progetto Supabase: **sul branch dev
-  puntano a Bacheca-Dev, su main a Bacheca (prod)**. Le credenziali dell'altro
-  ambiente sono conservate nel commento del blocco `// ── Config`.
-- Al merge/cherry-pick verso `main` va ripristinato il puntamento prod (vedi
-  anche `docs/IMPLEMENTAZIONI.md`).
-- Per testare a mano: scaricare `index.html` dal branch dev e aprirlo in locale.
+- **Strategia adottata il 14-06-2026**: un **solo repo** (`bacheca`). Lo sviluppo
+  avviene su **feature branch**; si fa merge in `main` solo quando è pronto, così
+  prod resta stabile. Il vecchio repo separato `bacheca-dev` è stato dismesso
+  (causava il doppio `index.html` da tenere allineato). **Il DB `Bacheca-Dev`
+  resta** come sandbox per i test.
+- `index.html` contiene URL+chiave anon Supabase: di default `main` punta a
+  **Bacheca (prod)**. Per testare su un branch, puntare temporaneamente a
+  **Bacheca-Dev** (credenziali nel commento del blocco `// ── Config`) e
+  **ripristinare i valori prod prima del merge**.
+- Per testare a mano: scaricare `index.html` dal branch e aprirlo in locale.
+- Rollback di prod: vedi `docs/ROLLBACK.md`.
 
 ## Struttura repo
 
@@ -42,7 +47,9 @@ spesa per evento, gestione quote con anticipi, notifiche Telegram.
 - `maintenance.html` — pagina di cortesia
 - `supabase/migrations/` — SQL documentati (vedi intestazioni: alcuni GIÀ applicati)
 - `supabase/functions/event-reminders/` — promemoria giornalieri, **NON deployata, NON attiva**
-- `docs/IMPLEMENTAZIONI.md` — dettaglio delle feature e passi manuali
+- `docs/IMPLEMENTAZIONI.md` — storico dei "9 punti" (documento superato: ormai
+  applicati in prod; tenuto come riferimento)
+- `docs/ROLLBACK.md` — come tornare indietro / ripubblicare una versione precedente
 
 ## Database (entrambi i progetti, RLS attivo ovunque)
 
@@ -141,7 +148,7 @@ locale può dare falsi negativi).
 
 Ottimizzazioni (dedup resize immagini, preconnect, memoizzazioni, fix toast/avatar),
 i "9 punti" (build precompilata, PWA, Realtime, promemoria-solo-codice, backup
-ferie+locandine, esporta in Google Calendar/.ics, ricerca estesa a
+ferie+locandine, esporta in Google Calendar, ricerca estesa a
 organizzatore/luogo, anticipi quote, supabase-js pinnato a 2.49.4), puntamento
 dev→Bacheca-Dev, preferenze notifiche per utente, fix contatore quote coperte
 e aggiunta rapida, switch Pages a GitHub Actions. Tutto deployato e funzionante.
@@ -158,6 +165,32 @@ Tutto **deployato in prod**, branch dev `claude/cool-brown-g0f1j5` allineato:
   "numero persone" nella lista: partecipanti e quota a persona si ritoccano
   nelle quote. Dettagli nella sezione "Lista Spesa — costi" sopra.
 - Etichetta UI rinominata in "Lista Spesa".
+
+## Cose fatte il 14-06-2026 (allineamento prod ↔ dev + nuove feature)
+
+Tutto **deployato in prod** (`main`, Action verde) e allineato con la dev prima
+della dismissione del repo separato:
+
+- **Lista Spesa / Gestione quote con anticipi** portate/confermate in prod
+  (travaso lista→quote, costo per articolo, totale speso, aggiunta rapida
+  assegnatari dai partecipanti, riepilogo anticipi/credito). Vedi sezioni sopra.
+- **Eventi multi-giorno** in prod: toggle "Evento su più giorni", voto per
+  singolo giorno o «Tutto il periodo», barre multi-giorno nel calendario.
+  Usa la colonna `events.end_date` (già presente sul DB prod).
+- **Export calendario**: tasti **Google Calendar** e **Outlook** nel dettaglio
+  evento (sostituito il download `.ics`).
+- **Preferenze notifiche Telegram** (📅 Eventi / 🗳️ Voti) aggiunte anche alla UI
+  prod (il backend `telegram_subscriptions.prefs` + `event-reminders` c'era già).
+- **PWA attivata in prod**: collegati `manifest.json`/`icon.svg` nell'`<head>` e
+  registrato `sw.js` (service worker *network-first* → resta aggiornato, si apre
+  offline). I file erano già nel repo e vengono copiati in `dist/` dal build.
+- **Posizione tasti**: nel form i toggle "🛒 Lista Spesa / 💶 Gestione quote"
+  (con il campo delegato) spostati **sotto "Stato evento"**; nel dettaglio evento
+  i pulsanti stanno sotto i risultati del sondaggio, sopra le azioni dell'owner.
+- **Campo social** uniformato a "Link social".
+- **Strategia repo unico** (vedi *Ambienti*): repo `bacheca-dev` dismesso,
+  sviluppo su feature branch nel repo prod, DB `Bacheca-Dev` tenuto come sandbox.
+- Aggiunta `docs/ROLLBACK.md`.
 
 ## Da valutare in futuro
 

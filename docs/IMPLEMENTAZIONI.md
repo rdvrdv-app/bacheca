@@ -1,5 +1,10 @@
 # Implementazioni preparate (branch dev)
 
+> ⚠️ **Documento storico (superato).** I "9 punti" qui sotto sono ormai **tutti
+> applicati e attivi in produzione** (vedi `docs/STATO-PROGETTO.md`). Questo file
+> è tenuto solo come riferimento di come furono pianificati; l'intro originale
+> ("nulla applicato alla produzione") non è più valida.
+
 Tutte le modifiche sono sul branch dev e **nulla è stato applicato alla produzione**:
 né a `main` (che alimenta GitHub Pages), né al progetto Supabase. Questo documento
 elenca, per ognuno dei 9 punti, cosa è pronto e cosa va fatto a mano per attivarlo.
