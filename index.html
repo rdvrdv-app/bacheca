@@ -4,19 +4,10 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Bacheca</title>
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin/>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
-  <link rel="preconnect" href="https://divxqcadlishdfhpvixd.supabase.co" crossorigin/>
-  <link rel="preconnect" href="https://xgzmjxththubvpfwgsnu.supabase.co" crossorigin/>
-  <link rel="manifest" href="manifest.json"/>
-  <meta name="theme-color" content="#7EB8D4"/>
-  <link rel="icon" href="icon.svg" type="image/svg+xml"/>
-  <link rel="apple-touch-icon" href="icon.svg"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-  <!-- Versione pinnata: per aggiornare cambia il numero qui e in docs/IMPLEMENTAZIONI.md -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -32,8 +23,11 @@
 const { useState, useEffect, useCallback, useMemo } = React;
 
 // ── Config ────────────────────────────────────────────────────
-// PRODUZIONE → progetto "Bacheca" (ref: divxqcadlishdfhpvixd).
-// Per testare su un branch dev puntare a "Bacheca-Dev" (ref: xgzmjxththubvpfwgsnu):
+// PRODUZIONE: punta al DB Bacheca (ref: divxqcadlishdfhpvixd), servito da
+// GitHub Pages sul branch main. Le tabelle `venues`/`discovery_runs` e le Edge
+// Function instagram-scan / instagram-results del tab "Scopri" sono migrate qui.
+//
+// Per lo SVILUPPO punta invece al DB Bacheca-Dev (ref: xgzmjxththubvpfwgsnu):
 //   URL: https://xgzmjxththubvpfwgsnu.supabase.co
 //   KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhnem1qeHRodGh1YnZwZndnc251Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NjI4ODYsImV4cCI6MjA5NTUzODg4Nn0.hEacNTOkx7ZbjV67dlDbGSq4iD2H3cXF1D2ICBpXX64
 const SUPABASE_URL = "https://divxqcadlishdfhpvixd.supabase.co";
@@ -42,8 +36,6 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Converte stringa vuota in null (per colonne date/time, evita "invalid input syntax")
 const orNull = v => { const s = (v ?? "").toString().trim(); return s === "" ? null : s; };
-
-const fmtEur = v => "€ " + (Number(v)||0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // ── Palette ───────────────────────────────────────────────────
 const LIGHT = {
@@ -91,21 +83,6 @@ const fmtDate = v => {
 };
 const fmtFerie       = ds => fmtDate(ds);
 
-// ── Eventi multi-giorno ───────────────────────────────────────
-const WHOLE_PERIOD     = "Tutto il periodo";
-const isMultiDay       = e => !!(e && e.end_date && e.date && e.end_date > e.date);
-const eventCoversDay   = (e, ds) => !!(e && e.date) && ds >= e.date && ds <= (e.end_date || e.date);
-const dateRange = (start, end) => {
-  if (!start) return [];
-  if (!end || end <= start) return [start];
-  const out = []; const d = new Date(start+"T00:00:00"); const last = new Date(end+"T00:00:00");
-  while (d <= last) { out.push(toDateStr(d.getFullYear(), d.getMonth(), d.getDate())); d.setDate(d.getDate()+1); }
-  return out;
-};
-const dayOptLabel      = ds => { const dt = new Date(ds+"T00:00:00"); return `${dt.toLocaleDateString("it-IT",{weekday:"short"})} ${fmtDate(ds)}`; };
-const buildMultiDayOptions = (start, end) => [...dateRange(start, end).map(dayOptLabel), WHOLE_PERIOD];
-const fmtDateRange     = e => isMultiDay(e) ? `${fmtDate(e.date)} → ${fmtDate(e.end_date)}` : fmtDate(e.date);
-
 const daysUntil = deadline => {
   if (!deadline) return null;
   const t = new Date(); t.setHours(0,0,0,0);
@@ -121,43 +98,6 @@ const eventBadge = (date) => {
   if (diff === 0) return { label: "🔔 Oggi",   bg: LIGHT.danger, color: "#fff" };
   if (diff === 1) return { label: "📅 Domani", bg: LIGHT.ok,     color: "#fff" };
   return null;
-};
-
-// ── Esporta in calendario (Google Calendar / file .ics) ───────
-const addDaysStr = (ds, n) => { const d = new Date(ds+"T00:00:00"); d.setDate(d.getDate()+n); return toDateStr(d.getFullYear(), d.getMonth(), d.getDate()); };
-// Con orario: blocco di 2 ore; senza orario o multi-giorno: tutto il giorno (DTEND esclusivo)
-const calendarDates = e => {
-  if (e.time && !isMultiDay(e)) {
-    const [h, mn] = e.time.split(":").map(Number);
-    const stamp = (hh, mm) => `${e.date.replace(/-/g,"")}T${String(hh).padStart(2,"0")}${String(mm).padStart(2,"0")}00`;
-    return { start: stamp(h, mn), end: stamp(Math.min(h+2, 23), mn), allDay: false };
-  }
-  return { start: e.date.replace(/-/g,""), end: addDaysStr(e.end_date || e.date, 1).replace(/-/g,""), allDay: true };
-};
-const googleCalUrl = e => {
-  const { start, end } = calendarDates(e);
-  const p = new URLSearchParams({ action:"TEMPLATE", text:e.title||"Evento", dates:`${start}/${end}`, details:e.notes||"", location:e.address||"" });
-  return "https://calendar.google.com/calendar/render?" + p.toString();
-};
-const downloadIcs = e => {
-  const { start, end, allDay } = calendarDates(e);
-  const esc = s => (s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");
-  const ics = [
-    "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Bacheca//IT","BEGIN:VEVENT",
-    `UID:bacheca-${e.id}@rdvrdv-app.github.io`,
-    `DTSTAMP:${new Date().toISOString().replace(/[-:.]/g,"").slice(0,15)}Z`,
-    allDay ? `DTSTART;VALUE=DATE:${start}` : `DTSTART:${start}`,
-    allDay ? `DTEND;VALUE=DATE:${end}`     : `DTEND:${end}`,
-    `SUMMARY:${esc(e.title)}`,
-    e.address ? `LOCATION:${esc(e.address)}` : "",
-    e.notes   ? `DESCRIPTION:${esc(e.notes)}` : "",
-    "END:VEVENT","END:VCALENDAR",
-  ].filter(Boolean).join("\r\n");
-  const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
-  const a = document.createElement("a");
-  a.href = url; a.download = `${(e.title||"evento").replace(/[^\w\s-]/g,"").trim()||"evento"}.ics`;
-  a.click();
-  URL.revokeObjectURL(url);
 };
 
 const validatePassword = p => {
@@ -200,7 +140,7 @@ function DeadlineBadge({ deadline, th }) {
 
 function Avatar({ name, size = 32 }) {
   const initials = (name || "?").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
-  const color = AVATAR_COLORS[(name || "?").charCodeAt(0) % AVATAR_COLORS.length];
+  const color = AVATAR_COLORS[(name || "").charCodeAt(0) % AVATAR_COLORS.length];
   return (
     <div style={{width:size,height:size,borderRadius:"50%",background:color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.38,fontWeight:700,color:"#fff",flexShrink:0}}>
       {initials}
@@ -216,48 +156,22 @@ function Toggle({ value, onChange, th }) {
   );
 }
 
-function ItemRow({ item, th, onToggle, onDelete, onCost }) {
-  const [confirm, setConfirm]   = useState(false);
-  const [editCost, setEditCost] = useState(false);
-  const [costVal, setCostVal]   = useState("");
-
-  const openCost = () => { setCostVal(item.cost != null ? String(item.cost) : ""); setEditCost(true); setConfirm(false); };
-  const saveCost = () => {
-    const n = Number(costVal);
-    onCost(item.id, costVal.trim() === "" || isNaN(n) || n < 0 ? null : n);
-    setEditCost(false);
-  };
-  // Appena un articolo viene segnato come acquistato si chiede il costo (facoltativo)
-  const handleToggle = () => { onToggle(item.id); if (!item.done) openCost(); else setEditCost(false); };
-  const metaSep = (item.qty || item.assignee) ? " · " : "";
-
+function ItemRow({ item, th, onToggle, onDelete }) {
+  const [confirm, setConfirm] = useState(false);
   return (
     <div style={{...cardSt(th), marginBottom: 8}}>
       <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <div onClick={handleToggle} style={{width:22,height:22,borderRadius:6,flexShrink:0,cursor:"pointer",border:`2px solid ${item.done?th.ok:th.accent}`,background:item.done?th.ok:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div onClick={() => onToggle(item.id)} style={{width:22,height:22,borderRadius:6,flexShrink:0,cursor:"pointer",border:`2px solid ${item.done?th.ok:th.accent}`,background:item.done?th.ok:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
           {item.done && <span style={{color:"#fff",fontSize:13,fontWeight:700}}>✓</span>}
         </div>
         <div style={{flex:1}}>
           <div style={{fontSize:14,fontWeight:600,color:item.done?th.sub:th.text,textDecoration:item.done?"line-through":"none"}}>{item.name}</div>
           <div style={{fontSize:12,color:th.sub,marginTop:2}}>
             {item.qty && `${item.qty} ${item.unit}`}{item.qty && item.assignee && " · "}{item.assignee && `👤 ${item.assignee}`}
-            {item.done && (item.cost != null
-              ? <span onClick={openCost} style={{cursor:"pointer",color:th.ok,fontWeight:700}}>{metaSep}💶 {fmtEur(item.cost)}</span>
-              : <span onClick={openCost} style={{cursor:"pointer",color:th.accent}}>{metaSep}💶 aggiungi costo</span>)}
           </div>
         </div>
         <button onClick={() => setConfirm(true)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:th.sub,padding:"4px"}}>✕</button>
       </div>
-      {editCost && (
-        <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`}}>
-          <div style={{fontSize:12,color:th.text,marginBottom:6}}>💶 Quanto è costato? <span style={{color:th.sub}}>(facoltativo)</span></div>
-          <div style={{display:"flex",gap:6}}>
-            <input type="number" min="0" step="any" inputMode="decimal" value={costVal} onChange={ev => setCostVal(ev.target.value)} placeholder="Es. 12.50" autoFocus style={{...inputSt(th),marginBottom:0,flex:1}}/>
-            <button onClick={saveCost} style={{...primBtn(th),fontSize:12,padding:"4px 12px"}}>Salva</button>
-            <button onClick={() => setEditCost(false)} style={{...btnSt(th),fontSize:12,padding:"4px 12px"}}>{item.cost != null ? "Annulla" : "Salta"}</button>
-          </div>
-        </div>
-      )}
       {confirm && (
         <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
           <span style={{fontSize:12,color:th.text}}>Eliminare <b>{item.name}</b>?</span>
@@ -313,7 +227,7 @@ function PasswordRecoveryView({ th, onDone }) {
 }
 
 // ── Login ─────────────────────────────────────────────────────
-function LoginView({ th, onGoRegister, onRecovery, notice }) {
+function LoginView({ th, onGoRegister, onRecovery }) {
   const [email, setEmail]   = useState("");
   const [pass,  setPass]    = useState("");
   const [err,   setErr]     = useState("");
@@ -406,7 +320,6 @@ function LoginView({ th, onGoRegister, onRecovery, notice }) {
           <h1 style={{fontSize:26,fontWeight:700,color:th.text}}>Bacheca</h1>
           <p style={{fontSize:14,color:th.sub,marginTop:4}}>Accedi per continuare</p>
         </div>
-        {notice && <div style={{...cardSt(th),marginBottom:12,border:`1.5px solid ${th.danger}`,background:th.danger+"14",color:th.danger,fontSize:13,fontWeight:600,textAlign:"center"}}>{notice}</div>}
         <div style={cardSt(th)}>
           <label style={labelSt(th)}>Email</label>
           <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="la-tua@email.com" style={inputSt(th)}/>
@@ -495,12 +408,12 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
   const [name,  setName]  = useState(profile?.full_name || "");
   const [saved, setSaved] = useState(false);
   const [pass,  setPass]  = useState({ new1:"", new2:"", err:"", ok:false });
-  const [tg,    setTg]    = useState({ chatId:"", exists:false, saved:false, loading:true, err:"", prefs:{ eventi:true, voti:true } });
+  const [tg,    setTg]    = useState({ chatId:"", exists:false, saved:false, loading:true, err:"" });
 
   useEffect(() => {
-    sb.from("telegram_subscriptions").select("chat_id,prefs").eq("user_id", user.id).maybeSingle()
+    sb.from("telegram_subscriptions").select("chat_id").eq("user_id", user.id).maybeSingle()
       .then(({ data, error }) => {
-        if (!error && data) setTg(p => ({...p, chatId: data.chat_id, exists: true, prefs: { eventi:true, voti:true, ...(data.prefs||{}) }}));
+        if (!error && data) setTg(p => ({...p, chatId: data.chat_id, exists: true}));
         setTg(p => ({...p, loading: false}));
       });
   }, [user.id]);
@@ -524,22 +437,12 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
     if (!tg.chatId.trim()) return;
     setTg(p => ({...p, err:""}));
     const op = tg.exists
-      ? sb.from("telegram_subscriptions").update({ chat_id: tg.chatId, prefs: tg.prefs }).eq("user_id", user.id)
-      : sb.from("telegram_subscriptions").insert({ user_id: user.id, chat_id: tg.chatId, prefs: tg.prefs });
+      ? sb.from("telegram_subscriptions").update({ chat_id: tg.chatId }).eq("user_id", user.id)
+      : sb.from("telegram_subscriptions").insert({ user_id: user.id, chat_id: tg.chatId });
     const { error } = await op;
     if (error) { setTg(p => ({...p, err:"Errore: " + error.message})); return; }
     setTg(p => ({...p, exists:true, saved:true}));
     setTimeout(() => setTg(p => ({...p, saved:false})), 2000);
-  };
-
-  // Preferenze per macro-funzionalità: salvataggio immediato se l'iscrizione esiste già
-  const togglePref = async k => {
-    const prefs = {...tg.prefs, [k]: tg.prefs[k] === false};
-    setTg(p => ({...p, prefs}));
-    if (tg.exists) {
-      const { error } = await sb.from("telegram_subscriptions").update({ prefs }).eq("user_id", user.id);
-      if (error) setTg(p => ({...p, err:"Errore: " + error.message}));
-    }
   };
 
   const removeTg = async () => {
@@ -582,15 +485,6 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
           <>
             <label style={labelSt(th)}>Chat ID Telegram</label>
             <input value={tg.chatId} onChange={e => setTg(p => ({...p, chatId:e.target.value}))} placeholder="Es. 123456789" style={inputSt(th)}/>
-            <div style={{marginBottom:12}}>
-              <div style={{...labelSt(th),marginBottom:8}}>Quali notifiche ricevere</div>
-              {[["eventi","📅 Eventi (nuovi, modifiche, cancellazioni)"],["voti","🗳️ Voti (aggiunti e ritirati)"]].map(([k,l]) => (
-                <div key={k} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:8}}>
-                  <span style={{fontSize:13,color:th.text}}>{l}</span>
-                  <Toggle value={tg.prefs[k] !== false} onChange={() => togglePref(k)} th={th}/>
-                </div>
-              ))}
-            </div>
             {tg.err && <div style={{color:th.danger,fontSize:13,marginBottom:8}}>{tg.err}</div>}
             <div style={{display:"flex",gap:8}}>
               <button onClick={saveTg} style={{...primBtn(th),flex:1}}>{tg.saved ? "✅ Salvato!" : tg.exists ? "Aggiorna" : "Attiva notifiche"}</button>
@@ -620,11 +514,34 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
 
 // ── Admin: coda di approvazione ───────────────────────────────
 function ApprovalQueue({ th, pendingEvents, onPublish, onEdit, onDelete }) {
+  const [catFilter, setCatFilter] = useState(null);
+
+  const cats = useMemo(() => {
+    const seen = new Set();
+    for (const e of pendingEvents) {
+      const c = e.discovery_meta?.category;
+      if (c) seen.add(c);
+    }
+    return [...seen].sort();
+  }, [pendingEvents]);
+
+  const shown = catFilter ? pendingEvents.filter(e => e.discovery_meta?.category === catFilter) : pendingEvents;
+
   if (!pendingEvents.length)
     return <div style={{color:th.sub,fontSize:14,textAlign:"center",padding:20}}>Nessun evento in attesa di approvazione.</div>;
   return (
     <div>
-      {pendingEvents.map(e => (
+      {cats.length > 1 && (
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+          <button onClick={() => setCatFilter(null)} style={{padding:"4px 12px",borderRadius:20,border:`1px solid ${!catFilter?th.accent:th.border}`,cursor:"pointer",fontSize:12,fontWeight:600,background:!catFilter?th.accent:th.input,color:!catFilter?"#fff":th.sub}}>Tutti ({pendingEvents.length})</button>
+          {cats.map(c => {
+            const n = pendingEvents.filter(e => e.discovery_meta?.category === c).length;
+            const on = catFilter === c;
+            return <button key={c} onClick={() => setCatFilter(on ? null : c)} style={{padding:"4px 12px",borderRadius:20,border:`1px solid ${on?th.accent:th.border}`,cursor:"pointer",fontSize:12,fontWeight:600,background:on?th.accent:th.input,color:on?"#fff":th.sub}}>{c} ({n})</button>;
+          })}
+        </div>
+      )}
+      {shown.map(e => (
         <div key={e.id} style={{...cardSt(th),marginBottom:10,border:`1px solid ${th.warn}66`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:6}}>
             <div style={{fontWeight:600,fontSize:14,color:th.text}}>{e.title}</div>
@@ -648,11 +565,482 @@ function ApprovalQueue({ th, pendingEvents, onPublish, onEdit, onDelete }) {
 }
 
 // ── Admin ─────────────────────────────────────────────────────
-function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEditEvent, onDeleteEvent, trashRefresh }) {
+// Categorie di locale/evento, ricavate dalle tipologie reali censite in `venues`.
+const VENUE_CATEGORIES = ["Aperitivo","DJ set","Disco","Latino & Caraibico","Beach & Pool party","Concerti & Live","Cena spettacolo","Feste a tema","Sagra & Folk","Karaoke","Quiz & Giochi","Teatro & Cabaret","Pranzo"];
+const ABRUZZO_PROVINCES = ["Pescara","Teramo","Chieti","L'Aquila"];
+const igHandleOf = u => { try { const parts = new URL(u).pathname.split("/").filter(Boolean); return parts[0] || ""; } catch { return ""; } };
+// Distanza in km tra due punti {lat,lon} (formula dell'emisenoverso)
+const kmBetween = (a, b) => {
+  const R = 6371, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
+  const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+};
+// Data odierna + n giorni (formato YYYY-MM-DD)
+const datePlusDays = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+// Coordinate da un indirizzo via geocoder Maps (OpenStreetMap/Nominatim, senza chiave)
+async function geocodeAddress(q) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=it&q=${encodeURIComponent(q)}`;
+    const r = await fetch(url, { headers: { "Accept": "application/json" } });
+    if (!r.ok) return null;
+    const arr = await r.json();
+    if (!Array.isArray(arr) || !arr.length) return null;
+    return { lat: Number(arr[0].lat), lon: Number(arr[0].lon) };
+  } catch { return null; }
+}
+
+// ── Editor locale (aggiunta/modifica manuale) ─────────────────
+function VenueEditor({ th, venue, onSave, onDelete, onCancel, saving }) {
+  const [f, setF] = useState(() => ({
+    name: venue?.name || "", instagram_url: venue?.instagram_url || "",
+    city: venue?.city || "", province: venue?.province || "Pescara",
+    address: venue?.address || "",
+    categories: Array.isArray(venue?.categories) ? venue.categories : [], active: venue?.active !== false,
+  }));
+  const [geocoding, setGeocoding] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const toggleC = c => setF(p => ({...p, categories: p.categories.includes(c) ? p.categories.filter(x=>x!==c) : [...p.categories, c]}));
+
+  const submit = async () => {
+    if (!f.name.trim()) return onSave(null, "Il nome è obbligatorio.");
+    // Coordinate ricavate dall'indirizzo con Maps (servono per il filtro a raggio km).
+    let lat = venue?.lat ?? null, lon = venue?.lon ?? null;
+    const addrChanged = (f.address||"") !== (venue?.address||"") || (f.city||"") !== (venue?.city||"");
+    const q = [f.address, f.city, f.province, "Italia"].filter(Boolean).join(", ");
+    if (q && (addrChanged || lat==null || lon==null)) {
+      setGeocoding(true);
+      const geo = await geocodeAddress(q);
+      setGeocoding(false);
+      if (geo) { lat = geo.lat; lon = geo.lon; }
+    }
+    onSave({
+      name: f.name.trim(), instagram_url: f.instagram_url.trim() || null,
+      city: f.city.trim() || null, province: f.province,
+      address: f.address.trim() || null,
+      lat, lon, categories: f.categories, active: f.active,
+    });
+  };
+  const busy = saving || geocoding;
+  return (
+    <div style={{...cardSt(th),marginBottom:12,border:`1px solid ${th.accent}66`}}>
+      <div style={sectTitle(th)}>{venue ? "✏️ Modifica locale" : "➕ Nuovo locale"}</div>
+      <label style={labelSt(th)}>Nome *</label>
+      <input value={f.name} onChange={e => setF(p => ({...p, name:e.target.value}))} style={inputSt(th)}/>
+      <label style={labelSt(th)}>Profilo Instagram (URL)</label>
+      <input value={f.instagram_url} onChange={e => setF(p => ({...p, instagram_url:e.target.value}))} placeholder="https://www.instagram.com/handle/" style={inputSt(th)}/>
+      <div style={{display:"flex",gap:8}}>
+        <div style={{flex:1}}>
+          <label style={labelSt(th)}>Città</label>
+          <input value={f.city} onChange={e => setF(p => ({...p, city:e.target.value}))} style={inputSt(th)}/>
+        </div>
+        <div style={{flex:1}}>
+          <label style={labelSt(th)}>Provincia</label>
+          <select value={f.province} onChange={e => setF(p => ({...p, province:e.target.value}))} style={inputSt(th)}>
+            {ABRUZZO_PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+      </div>
+      <label style={labelSt(th)}>Indirizzo</label>
+      <input value={f.address} onChange={e => setF(p => ({...p, address:e.target.value}))} placeholder="Via, civico, città" style={inputSt(th)}/>
+      <div style={{fontSize:11,color:th.sub,marginTop:-6,marginBottom:12}}>📍 Le coordinate per il raggio km vengono trovate automaticamente dall'indirizzo.</div>
+      <label style={labelSt(th)}>Categorie / tipologia</label>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+        {VENUE_CATEGORIES.map(c => {
+          const on = f.categories.includes(c);
+          return <button key={c} onClick={() => toggleC(c)} style={{padding:"5px 10px",borderRadius:16,border:`1px solid ${on?th.accent:th.border}`,cursor:"pointer",fontSize:11,fontWeight:600,background:on?th.accent:th.input,color:on?"#fff":th.sub}}>{c}</button>;
+        })}
+      </div>
+      <label style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,fontSize:13,color:th.text,cursor:"pointer"}}>
+        <input type="checkbox" checked={f.active} onChange={e => setF(p => ({...p, active:e.target.checked}))}/> Locale attivo
+      </label>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={onCancel} disabled={busy} style={{...btnSt(th),flex:1}}>Annulla</button>
+        <button onClick={submit} disabled={busy} style={{...primBtn(th),flex:1,opacity:busy?0.6:1}}>{geocoding ? "📍 Cerco indirizzo…" : saving ? "Salvataggio…" : "💾 Salva"}</button>
+      </div>
+      {venue && (confirmDel ? (
+        <div style={{marginTop:10,padding:"10px 12px",background:th.danger+"11",borderRadius:10,border:`1px solid ${th.danger}44`}}>
+          <div style={{fontSize:12,color:th.text,marginBottom:8}}>Eliminare definitivamente <b>{venue.name}</b> (es. locale chiuso)?</div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={() => setConfirmDel(false)} disabled={busy} style={{...btnSt(th),fontSize:12,flex:1}}>Annulla</button>
+            <button onClick={() => onDelete(venue)} disabled={busy} style={{...primBtn(th),fontSize:12,flex:1,background:th.danger}}>Sì, elimina</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setConfirmDel(true)} disabled={busy} style={{...btnSt(th),width:"100%",marginTop:8,fontSize:12,color:th.danger,border:`1px solid ${th.danger}44`,background:"transparent"}}>🗑️ Elimina locale (chiusura)</button>
+      ))}
+    </div>
+  );
+}
+
+// ── Scopri: scansione eventi dai profili Instagram dei locali ──
+// Flusso a due fasi sulle Edge Function (DB dev):
+//  1) instagram-scan  → avvia la raccolta Bright Data sui locali selezionati
+//                       e registra una "run";
+//  2) instagram-results → interrogata in polling finché lo snapshot è pronto;
+//                       estrae gli eventi, li deduplica e li inserisce in
+//                       pre-approvazione (compaiono nel tab "Approva").
+function DiscoverySection({ th, showToast }) {
+  const [cfg, setCfg]         = useState({ from:datePlusDays(0), to:datePlusDays(2), postsPerVenue:8 });
+  const [mode, setMode]       = useState("provincia");   // "provincia" | "avanzata"
+  const [province, setProvince] = useState("Pescara");
+  const [advCity, setAdvCity] = useState("Pescara");
+  const [advKm, setAdvKm]     = useState("");
+  const [venues, setVenues]   = useState([]);
+  const [sel, setSel]         = useState(() => new Set());
+  const [filter, setFilter]   = useState("");
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [phase, setPhase]     = useState("");
+  const [result, setResult]   = useState(null);
+  const [editor, setEditor]   = useState(null);          // null | {venue:null|obj}
+  const [savingVenue, setSavingVenue] = useState(false);
+  const [savedSearches, setSavedSearches] = useState([]);  // [{name, venueIds}]
+  const [saveSearchName, setSaveSearchName] = useState("");
+  const [showSaveSearch, setShowSaveSearch] = useState(false);
+  const cancelRef = React.useRef(false);
+
+  const loadVenues = async () => {
+    const { data: vs } = await sb.from("venues").select("*").order("name");
+    setVenues(vs || []);
+    return vs || [];
+  };
+
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  // Polla instagram-results finché done/error (o finché si lascia la pagina).
+  // Anche se l'utente esce, un job lato server (pg_cron) porta avanti la
+  // scansione: gli eventi compaiono comunque nel tab Approva. Il lock
+  // "processing" lato funzione evita che poll sovrapposti rielaborino (e
+  // raddoppino i crediti). Ritorna true se la scansione è conclusa.
+  const pollRun = async (runId, headers) => {
+    for (let i = 0; i < 60 && !cancelRef.current; i++) {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/instagram-results`, { method:"POST", headers, body: JSON.stringify({ runId }) });
+      const out = await r.json();
+      if (!r.ok || out.error) throw new Error(out.error || `Errore risultati (${r.status})`);
+      if (out.status === "done")  { setResult(out); setPhase(""); showToast(`✅ Scansione completata: ${out.created} eventi`); return true; }
+      if (out.status === "error") throw new Error(out.error || "La raccolta è terminata con errore.");
+      setPhase("Scansione in corso… gli eventi compariranno nel tab Approva anche se chiudi o cambi pagina.");
+      await wait(12000);
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    let alive = true;
+    cancelRef.current = false;
+    (async () => {
+      const [{ data: vs }, { data: conf }, { data: ss }, { data: active }] = await Promise.all([
+        sb.from("venues").select("*").order("name"),
+        sb.from("app_config").select("value").eq("key","discovery_config").maybeSingle(),
+        sb.from("app_config").select("value").eq("key","saved_searches").maybeSingle(),
+        sb.from("discovery_runs").select("id,status").in("status",["running","processing"]).order("created_at",{ascending:false}).limit(1).maybeSingle(),
+      ]);
+      if (!alive) return;
+      setVenues(vs || []);
+      if (conf?.value) {
+        const c = conf.value;
+        // Il periodo parte SEMPRE da oggi (non si recupera dalla config salvata).
+        setCfg(p => ({ ...p, postsPerVenue:c.postsPerVenue||8 }));
+        if (c.mode) setMode(c.mode);
+        if (c.province) setProvince(c.province);
+        if (c.advCity) setAdvCity(c.advCity);
+        if (c.advKm) setAdvKm(String(c.advKm));
+      }
+      if (ss?.value && Array.isArray(ss.value)) setSavedSearches(ss.value);
+      setLoading(false);
+
+      // Riprendi una scansione ancora in corso (lanciata prima e non conclusa):
+      // il job lato server la sta portando avanti, qui ne mostriamo lo stato.
+      if (active) {
+        setRunning(true);
+        setPhase("Scansione in corso ripresa… gli eventi compariranno nel tab Approva.");
+        try {
+          const { data:{ session } } = await sb.auth.getSession();
+          const headers = { "Content-Type":"application/json", "Authorization":`Bearer ${session.access_token}` };
+          await pollRun(active.id, headers);
+        } catch (e) {
+          if (alive) { setResult({ error: e.message }); setPhase(""); }
+        } finally {
+          if (alive) setRunning(false);
+        }
+      }
+    })();
+    return () => { alive = false; cancelRef.current = true; };
+  }, []);
+
+  // Mappa città → coordinate (primo locale per città), per il raggio km
+  const cityCoords = useMemo(() => {
+    const m = {};
+    for (const v of venues) if (v.city && v.lat!=null && v.lon!=null && !m[v.city]) m[v.city] = { lat:v.lat, lon:v.lon };
+    return m;
+  }, [venues]);
+  const venueCities = useMemo(() => [...new Set(venues.map(v => v.city).filter(Boolean))].sort(), [venues]);
+
+  // Locali disponibili in base alla modalità (+ filtro testo)
+  const available = useMemo(() => {
+    let list;
+    if (mode === "provincia") {
+      list = venues.filter(v => v.province === province);
+    } else {
+      const km = Number(advKm), center = cityCoords[advCity];
+      list = (!km || !center) ? [] : venues.filter(v => v.lat!=null && v.lon!=null && kmBetween(center, {lat:v.lat, lon:v.lon}) <= km);
+    }
+    const q = filter.trim().toLowerCase();
+    if (q) list = list.filter(v => (v.name||"").toLowerCase().includes(q) || (v.city||"").toLowerCase().includes(q));
+    return list;
+  }, [venues, mode, province, advKm, advCity, filter, cityCoords]);
+
+  const center = cityCoords[advCity];
+  const venueWarn = v => /inesistente|privato|non trovato|verificare|mercury disco/i.test(v.notes || "");
+  const toggleVenue = id => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const selectShown = () => setSel(s => { const n = new Set(s); available.forEach(v => n.add(v.id)); return n; });
+  const clearSel    = () => setSel(new Set());
+
+  const addDays = (dateStr, n) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr + "T12:00:00");
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const persistSavedSearches = async (list) => {
+    setSavedSearches(list);
+    await sb.from("app_config").upsert({ key:"saved_searches", value:list, updated_at:new Date().toISOString() });
+  };
+
+  const saveSearch = async () => {
+    const name = saveSearchName.trim();
+    if (!name) return showToast("Inserisci un nome per la ricerca.");
+    if (!sel.size) return showToast("Seleziona almeno un locale.");
+    const updated = [...savedSearches.filter(s => s.name !== name), { name, venueIds:[...sel] }];
+    await persistSavedSearches(updated);
+    setSaveSearchName(""); setShowSaveSearch(false);
+    showToast("✅ Ricerca salvata: " + name);
+  };
+
+  const loadSearch = (s) => {
+    setSel(new Set(s.venueIds));
+    showToast(`📋 Caricata: ${s.name}`);
+  };
+
+  const deleteSearch = async (name) => {
+    await persistSavedSearches(savedSearches.filter(s => s.name !== name));
+    showToast("🗑️ Ricerca eliminata");
+  };
+
+  const saveVenue = async (row, errMsg) => {
+    if (!row) return showToast("❌ " + (errMsg || "Dati non validi"));
+    setSavingVenue(true);
+    try {
+      if (editor?.venue) {
+        const { error } = await sb.from("venues").update(row).eq("id", editor.venue.id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("venues").insert(row);
+        if (error) throw error;
+      }
+      await loadVenues();
+      showToast(editor?.venue ? "✅ Locale aggiornato" : "✅ Locale aggiunto");
+      setEditor(null);
+    } catch (e) {
+      showToast("❌ " + (e.message || "Errore salvataggio"));
+    } finally {
+      setSavingVenue(false);
+    }
+  };
+
+  const deleteVenue = async (v) => {
+    setSavingVenue(true);
+    try {
+      const { error } = await sb.from("venues").delete().eq("id", v.id);
+      if (error) throw error;
+      setSel(s => { const n = new Set(s); n.delete(v.id); return n; });
+      await loadVenues();
+      showToast("🗑️ Locale eliminato");
+      setEditor(null);
+    } catch (e) {
+      showToast("❌ " + (e.message || "Errore eliminazione"));
+    } finally {
+      setSavingVenue(false);
+    }
+  };
+
+  const start = async () => {
+    if (!sel.size)            return showToast("Seleziona almeno un locale.");
+    if (!cfg.from || !cfg.to) return showToast("Imposta il periodo (da / a).");
+    const scanCity = mode === "provincia" ? province : advCity;
+    const scanKm   = mode === "provincia" ? 60 : (Number(advKm) || 30);
+    setRunning(true); setResult(null); setPhase("Avvio scansione…"); cancelRef.current = false;
+    try {
+      const { data:{ session } } = await sb.auth.getSession();
+      const headers = { "Content-Type":"application/json", "Authorization":`Bearer ${session.access_token}` };
+      await sb.from("app_config").upsert({ key:"discovery_config", value:{ mode, province, advCity, advKm:Number(advKm)||null, from:cfg.from, to:cfg.to, postsPerVenue:Number(cfg.postsPerVenue)||8 }, updated_at:new Date().toISOString() });
+      const scanRes = await fetch(`${SUPABASE_URL}/functions/v1/instagram-scan`, {
+        method:"POST", headers,
+        body: JSON.stringify({ venueIds:[...sel], postsPerVenue:Number(cfg.postsPerVenue)||8, city:scanCity, km:scanKm, from:cfg.from, to:cfg.to, categories:[] }),
+      });
+      const scan = await scanRes.json();
+      if (!scanRes.ok || scan.error) throw new Error(scan.error || `Errore avvio (${scanRes.status})`);
+      setPhase(`Raccolta avviata su ${scan.venues} locali. Attendo i risultati… (può richiedere qualche minuto)`);
+      // La scansione prosegue lato server (pg_cron) anche se chiudi o cambi
+      // pagina: qui pollo solo per mostrare l'avanzamento. Riaprendo il tab
+      // Scopri la scansione in corso viene ripresa automaticamente.
+      const done = await pollRun(scan.runId, headers);
+      if (!done && !cancelRef.current) setPhase("⏳ La raccolta sta ancora elaborando: riapri tra poco e ricontrolla il tab Approva.");
+    } catch (e) {
+      setResult({ error: e.message }); setPhase("");
+      showToast("❌ " + e.message);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  if (loading) return <div style={{color:th.sub,textAlign:"center",padding:20}}>Caricamento locali…</div>;
+
+  const modeBtn = (m, label) => (
+    <button onClick={() => setMode(m)} style={{flex:1,padding:"8px 10px",borderRadius:10,border:`1px solid ${mode===m?th.accent:th.border}`,cursor:"pointer",fontSize:12,fontWeight:600,background:mode===m?th.accent:th.input,color:mode===m?"#fff":th.sub}}>{label}</button>
+  );
+
+  return (
+    <div>
+      <div style={{...cardSt(th),marginBottom:14}}>
+        <div style={sectTitle(th)}>🔍 Parametri di ricerca</div>
+
+        <label style={labelSt(th)}>Periodo evento</label>
+        <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}>
+          <input type="date" min={datePlusDays(0)} value={cfg.from} onChange={e => { const f=e.target.value; setCfg(p => ({...p, from:f, to:addDays(f,2)})); }} style={{...inputSt(th),marginBottom:0,flex:1}}/>
+          <span style={{color:th.sub,fontSize:13}}>→</span>
+          <input type="date" value={cfg.to} onChange={e => setCfg(p => ({...p, to:e.target.value}))} style={{...inputSt(th),marginBottom:0,flex:1}}/>
+        </div>
+
+        <label style={labelSt(th)}>Post da leggere per locale</label>
+        <input type="number" min="1" max="50" value={cfg.postsPerVenue} onChange={e => setCfg(p => ({...p, postsPerVenue:e.target.value}))} style={inputSt(th)}/>
+
+        <label style={labelSt(th)}>Come selezionare i locali</label>
+        <div style={{display:"flex",gap:6,marginBottom:12}}>
+          {modeBtn("provincia","📍 Per provincia")}
+          {modeBtn("avanzata","🎯 Ricerca avanzata (raggio km)")}
+        </div>
+
+        {mode === "provincia" ? (
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {ABRUZZO_PROVINCES.map(p => {
+              const on = province === p;
+              const n = venues.filter(v => v.province === p).length;
+              return <button key={p} onClick={() => setProvince(p)} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${on?th.accent:th.border}`,cursor:"pointer",fontSize:12,fontWeight:600,background:on?th.accent:th.input,color:on?"#fff":th.sub}}>{p} ({n})</button>;
+            })}
+          </div>
+        ) : (
+          <div>
+            <div style={{display:"flex",gap:8}}>
+              <div style={{flex:2}}>
+                <label style={labelSt(th)}>Città di riferimento</label>
+                <select value={advCity} onChange={e => setAdvCity(e.target.value)} style={inputSt(th)}>
+                  {venueCities.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div style={{flex:1}}>
+                <label style={labelSt(th)}>Raggio (km)</label>
+                <input type="number" min="1" max="300" value={advKm} onChange={e => setAdvKm(e.target.value)} placeholder="es. 25" style={inputSt(th)}/>
+              </div>
+            </div>
+            <div style={{fontSize:11,color:th.sub}}>{!Number(advKm) ? "Inserisci i km: i locali nel raggio appariranno qui sotto." : `${available.length} locali entro ${advKm} km da ${advCity}.`}</div>
+          </div>
+        )}
+      </div>
+
+      <div style={{...cardSt(th),marginBottom:14}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,gap:8}}>
+          <div style={sectTitle(th)}>🏟️ Locali da scansionare ({sel.size} selez. · {available.length} disp.)</div>
+          <button onClick={() => setEditor({ venue:null })} style={{...btnSt(th),fontSize:12,whiteSpace:"nowrap"}}>➕ Aggiungi</button>
+        </div>
+
+        {editor && <VenueEditor th={th} venue={editor.venue} onSave={saveVenue} onDelete={deleteVenue} onCancel={() => setEditor(null)} saving={savingVenue}/>}
+
+        {savedSearches.length > 0 && (
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,color:th.sub,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Ricerche salvate</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {savedSearches.map(s => (
+                <div key={s.name} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",borderRadius:20,border:`1px solid ${th.border}`,background:th.input,fontSize:12}}>
+                  <button onClick={() => loadSearch(s)} style={{background:"none",border:"none",cursor:"pointer",color:th.accent,fontWeight:600,padding:0,fontSize:12}}>{s.name} ({s.venueIds.length})</button>
+                  <button onClick={() => deleteSearch(s.name)} style={{background:"none",border:"none",cursor:"pointer",color:th.sub,padding:0,fontSize:13,lineHeight:1}}>✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {sel.size > 0 && (
+          <div style={{marginBottom:10,padding:"8px 12px",borderRadius:10,background:th.accent+"12",border:`1px solid ${th.accent}33`}}>
+            <div style={{fontSize:12,color:th.text,marginBottom:6,fontWeight:600}}>✓ {sel.size} locali selezionati:</div>
+            <div style={{fontSize:11,color:th.sub,marginBottom:8,lineHeight:1.6}}>
+              {venues.filter(v => sel.has(v.id)).map(v => v.name).join(" · ")}
+            </div>
+            {!showSaveSearch
+              ? <button onClick={() => setShowSaveSearch(true)} style={{...btnSt(th),fontSize:12,padding:"4px 12px"}}>💾 Salva questa ricerca</button>
+              : (
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <input value={saveSearchName} onChange={e => setSaveSearchName(e.target.value)} placeholder="Nome ricerca…" style={{...inputSt(th),marginBottom:0,flex:1,fontSize:12,padding:"6px 10px"}} onKeyDown={e => { if(e.key==="Enter") saveSearch(); }}/>
+                  <button onClick={saveSearch} style={{...primBtn(th),fontSize:12,padding:"6px 12px",whiteSpace:"nowrap"}}>Salva</button>
+                  <button onClick={() => { setShowSaveSearch(false); setSaveSearchName(""); }} style={{...btnSt(th),fontSize:12,padding:"6px 10px"}}>✕</button>
+                </div>
+              )
+            }
+          </div>
+        )}
+
+        <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filtra per nome o città…" style={inputSt(th)}/>
+        <div style={{display:"flex",gap:6,marginBottom:10}}>
+          <button onClick={selectShown} style={{...btnSt(th),fontSize:12,flex:1}}>✓ Seleziona visibili ({available.length})</button>
+          <button onClick={clearSel} style={{...btnSt(th),fontSize:12,flex:1}}>✕ Deseleziona tutti</button>
+        </div>
+        <div style={{maxHeight:300,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+          {available.map(v => {
+            const on = sel.has(v.id);
+            const dist = (mode==="avanzata" && center && v.lat!=null && v.lon!=null) ? Math.round(kmBetween(center,{lat:v.lat,lon:v.lon})) : null;
+            return (
+              <div key={v.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,border:`1px solid ${on?th.accent:th.border}`,background:on?th.accent+"18":th.input}}>
+                <div onClick={() => toggleVenue(v.id)} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+                  <div style={{width:20,height:20,borderRadius:6,flexShrink:0,border:`2px solid ${on?th.accent:th.sub}`,background:on?th.accent:"transparent",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:13}}>{on?"✓":""}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,color:th.text}}>{v.name} {venueWarn(v) && <span title={v.notes||""}>⚠️</span>}</div>
+                    <div style={{fontSize:11,color:th.sub,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v.city||"—"}{v.province?` (${v.province})`:""} · @{igHandleOf(v.instagram_url)}{dist!=null?` · ${dist} km`:""}</div>
+                  </div>
+                </div>
+                <button onClick={() => setEditor({ venue:v })} title="Modifica locale" style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:th.sub,padding:"2px 4px",flexShrink:0}}>✏️</button>
+              </div>
+            );
+          })}
+          {available.length===0 && <div style={{color:th.sub,fontSize:13,textAlign:"center",padding:14}}>{mode==="avanzata" && !Number(advKm) ? "Imposta i km per vedere i locali disponibili." : "Nessun locale disponibile con questi criteri."}</div>}
+        </div>
+      </div>
+
+      <button onClick={start} disabled={running} style={{...primBtn(th),width:"100%",fontSize:14,padding:"12px 16px",opacity:running?0.6:1,cursor:running?"default":"pointer"}}>
+        {running ? "⏳ Scansione in corso…" : `🔍 Avvia scansione (${sel.size} locali)`}
+      </button>
+
+      {phase && <div style={{marginTop:12,padding:"10px 12px",borderRadius:10,background:th.input,color:th.sub,fontSize:13}}>{phase}</div>}
+      {result && !result.error && (
+        <div style={{marginTop:12,padding:"12px 14px",borderRadius:10,background:th.ok+"1A",border:`1px solid ${th.ok}55`,color:th.text,fontSize:13}}>
+          ✅ Creati <b>{result.created}</b> nuovi eventi{typeof result.scartati==="number" && ` · ${result.scartati} doppioni scartati`}{typeof result.flyers==="number" && ` · ${result.flyers} locandine`}.<br/>
+          Vai sul tab <b>✅ Approva</b> per rivederli e pubblicarli.
+        </div>
+      )}
+      {result?.error && (
+        <div style={{marginTop:12,padding:"12px 14px",borderRadius:10,background:th.danger+"1A",border:`1px solid ${th.danger}55`,color:th.text,fontSize:13}}>❌ {result.error}</div>
+      )}
+    </div>
+  );
+}
+
+function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEditEvent, onDeleteEvent, trashRefresh, initialSection, onSection }) {
   const [users,   setUsers]  = useState([]);
   const [logs,    setLogs]   = useState([]);
   const [trash,   setTrash]  = useState([]);
-  const [section, setSection]= useState("users");
+  const [section, setSectionState]= useState(initialSection || "users");
+  const setSection = s => { setSectionState(s); onSection && onSection(s); };
   const [loading, setLoading]= useState(true);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
@@ -664,8 +1052,7 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
         sb.from("activity_log").select("*").gte("created_at", cutoff).order("created_at",{ascending:false}).limit(200),
         sb.from("events").select("*").not("deleted_at","is",null).order("deleted_at",{ascending:false}),
       ]);
-      // Pulizia log vecchi in background: non serve attenderla per mostrare il pannello
-      sb.from("activity_log").delete().lt("created_at", cutoff).then(() => {});
+      await sb.from("activity_log").delete().lt("created_at", cutoff);
       setUsers(u.data||[]); setLogs(l.data||[]); setTrash(t.data||[]);
       setLoading(false);
     };
@@ -685,8 +1072,7 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
   };
 
   const toggleBlock = async (id, blocked) => {
-    const { error } = await sb.from("profiles").update({ blocked: !blocked }).eq("id", id);
-    if (error) { showToast("❌ " + error.message); return; }
+    await sb.from("profiles").update({ blocked: !blocked }).eq("id", id);
     setUsers(p => p.map(u => u.id===id ? {...u, blocked:!blocked} : u));
     showToast(!blocked ? "🚫 Utente bloccato" : "✅ Utente sbloccato");
   };
@@ -717,7 +1103,7 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
     showToast("🗑️ Evento eliminato definitivamente");
   };
 
-  const tabs = [["users","👥 Utenti"],["approve","✅ Approva"],["logs","📋 Attività"],["trash","🗑️ Cestino"]];
+  const tabs = [["users","👥 Utenti"],["discover","🔍 Scopri"],["approve","✅ Approva"],["logs","📋 Attività"],["trash","🗑️ Cestino"]];
 
   return (
     <div>
@@ -733,6 +1119,8 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
         ))}
       </div>
 
+      {section==="discover" && <DiscoverySection th={th} showToast={showToast}/>}
+
       {section==="approve" && <ApprovalQueue th={th} pendingEvents={pendingEvents} onPublish={onPublish} onEdit={onEditEvent} onDelete={onDeleteEvent}/>}
 
       {loading && ["users","logs","trash"].includes(section) && <div style={{color:th.sub,textAlign:"center",padding:20}}>Caricamento...</div>}
@@ -745,20 +1133,17 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
               <div style={{fontWeight:600,fontSize:14,color:th.text}}>{u.full_name||"—"}</div>
               <div style={{fontSize:12,color:th.sub}}>{u.email}</div>
             </div>
+            {u.blocked && <span style={{fontSize:11,padding:"2px 8px",borderRadius:8,fontWeight:600,background:th.danger+"22",color:th.danger}}>🚫 Bloccato</span>}
             <span style={{fontSize:11,padding:"2px 8px",borderRadius:8,fontWeight:600,
               background:u.role==="admin"?th.accent+"33":th.ok+"33",
               color:u.role==="admin"?th.accent:th.ok}}>
               {u.role==="admin"?"👑 Admin":"👤 User"}
             </span>
-            {u.blocked && <span style={{fontSize:11,padding:"2px 8px",borderRadius:8,fontWeight:600,background:th.danger+"22",color:th.danger}}>🚫 Bloccato</span>}
           </div>
           {u.id !== user.id ? (
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               <button onClick={() => toggleRole(u.id, u.role)} style={{...btnSt(th),fontSize:12,width:"100%"}}>
                 {u.role==="admin"?"→ Utente":"→ Admin"}
-              </button>
-              <button onClick={() => toggleBlock(u.id, u.blocked)} style={{...btnSt(th),fontSize:12,width:"100%",color:u.blocked?th.ok:th.warn,border:`1px solid ${(u.blocked?th.ok:th.warn)}44`,background:"transparent"}}>
-                {u.blocked?"✅ Sblocca utente":"🚫 Blocca utente"}
               </button>
               {confirmDelete === u.id ? (
                 <div style={{padding:"10px 12px",background:th.danger+"11",borderRadius:10,border:`1px solid ${th.danger}44`}}>
@@ -769,7 +1154,12 @@ function AdminView({ th, user, onBack, showToast, pendingEvents, onPublish, onEd
                   </div>
                 </div>
               ) : (
-                <button onClick={() => setConfirmDelete(u.id)} style={{...btnSt(th),fontSize:12,width:"100%",color:th.danger,border:`1px solid ${th.danger}44`,background:"transparent"}}>🗑️ Elimina utente</button>
+                <React.Fragment>
+                  <button onClick={() => toggleBlock(u.id, u.blocked)} style={{...btnSt(th),fontSize:12,width:"100%",color:u.blocked?th.ok:th.warn,border:`1px solid ${u.blocked?th.ok:th.warn}44`,background:"transparent"}}>
+                    {u.blocked ? "✅ Sblocca utente" : "🚫 Blocca utente"}
+                  </button>
+                  <button onClick={() => setConfirmDelete(u.id)} style={{...btnSt(th),fontSize:12,width:"100%",color:th.danger,border:`1px solid ${th.danger}44`,background:"transparent"}}>🗑️ Elimina utente</button>
+                </React.Fragment>
               )}
             </div>
           ) : (
@@ -835,7 +1225,7 @@ function EventCard({ e, th, onOpen }) {
         {(e.date||e.time) && (
           <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2,flexWrap:"wrap"}}>
             <span style={{fontSize:12,color:th.accent,fontWeight:600}}>
-              {e.date&&`📅 ${fmtDateRange(e)}`}{e.date&&e.time&&"  "}{e.time&&`🕐 ${e.time}`}
+              {e.date&&`📅 ${fmtDate(e.date)}`}{e.date&&e.time&&"  "}{e.time&&`🕐 ${e.time}`}
             </span>
             {badge && (
               <span style={{background:badge.bg,color:badge.color,borderRadius:8,padding:"2px 8px",fontSize:11,fontWeight:600}}>
@@ -870,17 +1260,6 @@ function CalGrid({ calDate, setCalDate, events, ferie, th, onDayClick }) {
     return arr;
   }, [y, m, first, days]);
 
-  // Mappa giorno → eventi del mese (evita di rifiltrare tutti gli eventi a ogni render di cella)
-  const eventsByDay = useMemo(() => {
-    const map = new Map();
-    for (let d = 1; d <= days; d++) {
-      const ds = toDateStr(y, m, d);
-      const evs = events.filter(e => eventCoversDay(e, ds));
-      if (evs.length) map.set(ds, evs);
-    }
-    return map;
-  }, [events, y, m, days]);
-
   // Giorni del mese in cui almeno una persona è in ferie (per la palma 🌴)
   const ferieDays = useMemo(() => {
     const s = new Set();
@@ -906,9 +1285,7 @@ function CalGrid({ calDate, setCalDate, events, ferie, th, onDayClick }) {
           if (!d) return <div key={i}/>;
           const ds  = toDateStr(y, m, d);
           const isT = ds === ts;
-          const evs    = eventsByDay.get(ds) || [];
-          const spans  = evs.filter(isMultiDay);
-          const single = evs.filter(e => !isMultiDay(e));
+          const evs = events.filter(e => e.date === ds);
           const hasF = ferieDays.has(ds);
           const clickable = evs.length || hasF;
           return (
@@ -916,17 +1293,9 @@ function CalGrid({ calDate, setCalDate, events, ferie, th, onDayClick }) {
               style={{borderRadius:10,padding:"6px 2px",textAlign:"center",cursor:clickable?"pointer":"default",
                 background:isT?th.accent:"transparent",border:`2px solid ${isT?th.accent:"transparent"}`}}>
               <span style={{fontSize:13,fontWeight:isT?700:400,color:isT?"#fff":th.text}}>{d}</span>
-              {spans.slice(0,3).map(e => {
-                const c = scColor(STATUS_CONFIG[e.status]||STATUS_CONFIG.open, th);
-                const isStart = ds === e.date, isEnd = ds === (e.end_date || e.date);
-                return <div key={e.id} title={e.title} style={{height:4,background:c,marginTop:2,
-                  marginLeft:isStart?2:-3, marginRight:isEnd?2:-3,
-                  borderTopLeftRadius:isStart?3:0, borderBottomLeftRadius:isStart?3:0,
-                  borderTopRightRadius:isEnd?3:0, borderBottomRightRadius:isEnd?3:0}}/>;
-              })}
-              {(single.length>0 || hasF) && (
+              {(evs.length>0 || hasF) && (
                 <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:2,marginTop:3,flexWrap:"wrap"}}>
-                  {single.slice(0,4).map(e => <div key={e.id} style={{width:6,height:6,borderRadius:"50%",background:scColor(STATUS_CONFIG[e.status]||STATUS_CONFIG.open,th)}}/>)}
+                  {evs.slice(0,4).map(e => <div key={e.id} style={{width:6,height:6,borderRadius:"50%",background:scColor(STATUS_CONFIG[e.status]||STATUS_CONFIG.open,th)}}/>)}
                   {hasF && <span style={{fontSize:9,lineHeight:1}}>🌴</span>}
                 </div>
               )}
@@ -943,15 +1312,15 @@ function SearchView({ events, th, onOpen, onBack }) {
   const [q, setQ] = useState("");
   const ql  = q.trim().toLowerCase();
   const res = useMemo(() =>
-    ql ? events.filter(e => [e.title, e.notes, e.organizer, e.address].some(f => (f||"").toLowerCase().includes(ql))) : [],
+    ql ? events.filter(e => (e.title||"").toLowerCase().includes(ql) || (e.notes||"").toLowerCase().includes(ql)) : [],
   [ql, events]);
 
   return (
     <div>
       <button onClick={onBack} style={backBtn(th)}>← Indietro</button>
       <h2 style={{margin:"0 0 16px",fontSize:18,color:th.text}}>Cerca</h2>
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Cerca per titolo, note, organizzatore, luogo..." style={inputSt(th)} autoFocus/>
-      <div style={{fontSize:11,color:th.sub,marginBottom:16,marginTop:-8}}>La ricerca funziona su <b>titolo</b>, <b>note</b>, <b>organizzatore</b> e <b>luogo</b>.</div>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Cerca per titolo o note..." style={inputSt(th)} autoFocus/>
+      <div style={{fontSize:11,color:th.sub,marginBottom:16,marginTop:-8}}>La ricerca funziona sui campi <b>titolo</b> e <b>note</b>.</div>
       {ql && res.length===0 && <div style={{color:th.sub,fontSize:14,textAlign:"center",padding:20}}>Nessun risultato per "<b>{q}</b>"</div>}
       {res.map(e => <EventCard key={e.id} e={e} th={th} onOpen={onOpen}/>)}
     </div>
@@ -959,10 +1328,8 @@ function SearchView({ events, th, onOpen, onBack }) {
 }
 
 // ── Shopping List ─────────────────────────────────────────────
-function ShoppingListView({ event, events, th, user, profile, onBack, onSave, onGoQuote }) {
+function ShoppingListView({ event, events, th, onBack, onSave }) {
   const e = events.find(x => x.id===event.id) || event;
-  // Il travaso verso la gestione quote usa l'RPC save_quotes: solo owner, delegato o admin
-  const canQuote = !!onGoQuote && e.gestione_quote && (e.created_by===user?.id || profile?.role==="admin" || e.quote_delegato===user?.id);
   const [items, setItems] = useState(e.shopping_list || []);
   const [ni,    setNi]    = useState({ name:"", qty:"", unit:"pz", assignee:"" });
 
@@ -976,39 +1343,13 @@ function ShoppingListView({ event, events, th, user, profile, onBack, onSave, on
 
   const toggleDone = id => { const u = items.map(i => i.id===id ? {...i, done:!i.done} : i); setItems(u); onSave(e.id, u); };
   const deleteItem = id => { const u = items.filter(i => i.id!==id); setItems(u); onSave(e.id, u); };
-  const setCost    = (id, cost) => { const u = items.map(i => i.id===id ? {...i, cost} : i); setItems(u); onSave(e.id, u); };
   const pending = items.filter(i => !i.done);
   const done    = items.filter(i =>  i.done);
-  // Il totale conta solo gli articoli acquistati con un costo inserito
-  const withCost = done.filter(i => i.cost != null);
-  const totSpeso = withCost.reduce((s, i) => s + (Number(i.cost)||0), 0);
-  const participants = [...new Set(e.participants||[])].filter(Boolean);
-
-  // Travaso verso la gestione quote: porta dentro i partecipanti all'evento e
-  // tratta come anticipo ciò che ciascun assegnatario ha pagato per la spesa.
-  const goQuote = () => {
-    const speso = {};
-    done.forEach(i => {
-      const nm = (i.assignee||"").trim();
-      if (!nm || i.cost == null) return;
-      const k = nm.toLowerCase();
-      speso[k] = { name: speso[k]?.name || nm, tot: (speso[k]?.tot||0) + (Number(i.cost)||0) };
-    });
-    const quote = (e.quote||[]).map(p => ({...p}));
-    const have  = new Set(quote.map(p => (p.name||"").toLowerCase()));
-    const addNew = nm => { const k = nm.toLowerCase(); if (!have.has(k)) { quote.push({ id: Date.now()+Math.random(), name:nm, paid:false }); have.add(k); } };
-    participants.forEach(addNew);
-    Object.values(speso).forEach(v => addNew(v.name));
-    // Sovrascrive l'anticipo di chi ha pagato la spesa: il travaso è ripetibile senza doppi conteggi
-    quote.forEach(p => { const v = speso[(p.name||"").toLowerCase()]; if (v) p.anticipo = v.tot; });
-    // Il numero di partecipanti parte dalle persone in lista quote: si ritocca lì se serve
-    onGoQuote(e.id, { quote, quota_tot: totSpeso, quota_num: quote.length });
-  };
 
   return (
     <div>
       <button onClick={onBack} style={backBtn(th)}>← Indietro</button>
-      <h2 style={{margin:"0 0 4px",fontSize:18,color:th.text}}>🛒 Lista Spesa</h2>
+      <h2 style={{margin:"0 0 4px",fontSize:18,color:th.text}}>🛒 Lista della spesa</h2>
       <div style={{fontSize:13,color:th.sub,marginBottom:16}}>{e.title}</div>
       <div style={{...cardSt(th),marginBottom:16}}>
         <div style={sectTitle(th)}>Aggiungi articolo</div>
@@ -1028,45 +1369,18 @@ function ShoppingListView({ event, events, th, user, profile, onBack, onSave, on
         </div>
         <label style={labelSt(th)}>Assegnato a</label>
         <input value={ni.assignee} onChange={ev => setNi(p => ({...p, assignee:ev.target.value}))} placeholder="Nome persona..." style={inputSt(th)}/>
-        {participants.length>0 && (
-          <div style={{marginTop:-6,marginBottom:12}}>
-            <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Aggiunta rapida (partecipanti all'evento):</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {participants.map(n => (
-                <button key={n} onClick={() => setNi(p => ({...p, assignee: p.assignee===n ? "" : n}))}
-                  style={{padding:"5px 11px",borderRadius:20,fontSize:12,cursor:"pointer",border:`1px solid ${ni.assignee===n?th.accent:th.border}`,background:ni.assignee===n?th.accent+"22":th.input,color:ni.assignee===n?th.accent:th.text,fontWeight:ni.assignee===n?700:400}}>
-                  {ni.assignee===n ? "✓" : "+"} {n}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
         <button onClick={addItem} style={{...primBtn(th),width:"100%"}}>+ Aggiungi</button>
       </div>
       {pending.length>0 && (
         <div style={{marginBottom:16}}>
           <div style={{...sectTitle(th),marginBottom:8}}>Da acquistare ({pending.length})</div>
-          {pending.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem} onCost={setCost}/>)}
+          {pending.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem}/>)}
         </div>
       )}
       {done.length>0 && (
         <div>
           <div style={{...sectTitle(th),marginBottom:8}}>Acquistati ({done.length})</div>
-          {done.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem} onCost={setCost}/>)}
-          {withCost.length>0 && (
-            <div style={{...cardSt(th),marginTop:4,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-              <div>
-                <div style={{fontSize:14,fontWeight:700,color:th.text}}>💶 Totale speso</div>
-                {withCost.length<done.length && <div style={{fontSize:11,color:th.sub,marginTop:2}}>{withCost.length} su {done.length} articoli acquistati hanno un costo</div>}
-              </div>
-              <div style={{fontSize:18,fontWeight:800,color:th.ok}}>{fmtEur(totSpeso)}</div>
-            </div>
-          )}
-          {canQuote && pending.length===0 && (
-            <button onClick={goQuote} style={{...primBtn(th),width:"100%",marginTop:10}}>
-              💶 Vai a gestione quote →
-            </button>
-          )}
+          {done.map(item => <ItemRow key={item.id} item={item} th={th} onToggle={toggleDone} onDelete={deleteItem}/>)}
         </div>
       )}
       {items.length===0 && <div style={{textAlign:"center",padding:30,color:th.sub,fontSize:14}}>Nessun articolo ancora.<br/>Aggiungi il primo! 🛒</div>}
@@ -1082,11 +1396,10 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
   const [tot,  setTot]  = useState(e.quota_tot || "");
   const [name, setName] = useState("");
 
-  // Il numero di partecipanti segue le persone in lista, ma resta modificabile
-  // a mano (l'avviso segnala le incongruenze). A lista vuota non si azzera:
-  // può arrivare precompilato dalla lista della spesa.
+  // Il numero di partecipanti segue le persone in lista,
+  // ma resta modificabile a mano (l'avviso segnala le incongruenze).
   useEffect(() => {
-    if (list.length) setNum(String(list.length));
+    setNum(list.length ? String(list.length) : "");
   }, [list.length]);
 
   const quota = (Number(num) > 0 && Number(tot) > 0) ? Number(tot) / Number(num) : 0;
@@ -1103,29 +1416,18 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
   };
   const togglePaid   = id => persist(list.map(p => p.id===id ? {...p, paid:!p.paid} : p));
   const removePerson = id => persist(list.filter(p => p.id!==id));
-  // Anticipi: aggiornamento locale durante la digitazione, salvataggio al blur
-  const setAnticipo  = (id, v) => setList(l => l.map(p => p.id===id ? {...p, anticipo: v} : p));
-
-  // Regola anticipi: l'anticipo copre la quota. Se la supera, la quota risulta pagata
-  // e l'eccedenza è un credito da incassare (da chi è irrilevante).
-  // Il toggle 💰 indica che la persona ha saldato a mano il dovuto residuo.
-  const anticipoOf = p => Number(p.anticipo)||0;
-  const isPagata   = p => !!p.paid || (quota>0 && anticipoOf(p) >= quota);
-  const contributo = p => isPagata(p) ? Math.max(quota, anticipoOf(p)) : anticipoOf(p);
-  const creditoOf  = p => Math.max(0, anticipoOf(p) - quota);
-  const totAnticipi = list.reduce((s, p) => s + anticipoOf(p), 0);
 
   const already = new Set(list.map(p => (p.name||"").toLowerCase()));
-  // Aggiunta rapida: solo chi ha partecipato al sondaggio (inclusi gli accompagnatori)
   const candidates = useMemo(() => {
-    return [...new Set(e.participants || [])].filter(n => n && !already.has(n.toLowerCase()));
-  }, [e.participants, list]);
+    const fromPoll  = e.participants || [];
+    const fromUsers = (users || []).map(u => u.full_name || u.email);
+    return [...new Set([...fromPoll, ...fromUsers])].filter(n => n && !already.has(n.toLowerCase()));
+  }, [e.participants, users, list]);
 
-  const paidList     = list.filter(isPagata);
-  const unpaidList   = list.filter(p => !isPagata(p));
-  const incassato    = quota>0 ? list.reduce((s, p) => s + contributo(p), 0) : 0;
-  const daIncassare  = quota>0 ? unpaidList.reduce((s, p) => s + Math.max(0, quota - anticipoOf(p)), 0) : 0;
-  const daRestituire = quota>0 ? list.reduce((s, p) => s + creditoOf(p), 0) : 0;
+  const paidList    = list.filter(p => p.paid);
+  const unpaidList  = list.filter(p => !p.paid);
+  const incassato   = paidList.length * quota;
+  const daIncassare = unpaidList.length * quota;
 
   return (
     <div>
@@ -1159,23 +1461,13 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
         <div style={{...cardSt(th),marginBottom:16}}>
           <div style={sectTitle(th)}>Riepilogo</div>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-            <span style={{fontSize:13,color:th.sub}}>Quote coperte</span>
-            <span style={{fontSize:14,fontWeight:700,color:paidList.length===list.length?th.ok:th.text}}>{paidList.length}/{list.length}</span>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-            <span style={{fontSize:13,color:th.sub}}>Incassato / anticipato</span>
+            <span style={{fontSize:13,color:th.sub}}>Incassato</span>
             <span style={{fontSize:14,fontWeight:700,color:th.ok}}>{fmt(incassato)}</span>
           </div>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:unpaidList.length?10:0}}>
             <span style={{fontSize:13,color:th.sub}}>Ancora da incassare</span>
             <span style={{fontSize:14,fontWeight:700,color:daIncassare>0?th.danger:th.sub}}>{fmt(daIncassare)}</span>
           </div>
-          {daRestituire>0 && (
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{fontSize:13,color:th.sub}}>Da restituire (anticipi extra)</span>
-              <span style={{fontSize:14,fontWeight:700,color:th.warn}}>{fmt(daRestituire)}</span>
-            </div>
-          )}
           {unpaidList.length>0 && (
             <div style={{paddingTop:10,borderTop:`1px solid ${th.border}`}}>
               <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Mancano da:</div>
@@ -1184,43 +1476,6 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
                   <span key={p.id} style={{padding:"3px 10px",borderRadius:20,fontSize:12,background:th.danger+"22",color:th.danger,fontWeight:600}}>{p.name}</span>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {quota>0 && list.length>0 && (
-        <div style={{...cardSt(th),marginBottom:16}}>
-          <div style={sectTitle(th)}>💸 Anticipi e saldi</div>
-          <div style={{fontSize:11,color:th.sub,marginBottom:10,lineHeight:1.5}}>
-            Indica quanto ha <b>anticipato</b> ciascuno (es. chi ha pagato il ristorante). Se l'anticipo copre la quota, questa risulta pagata; l'eccedenza è da incassare.
-          </div>
-          {list.map(p => (
-            <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-              <span style={{flex:1,fontSize:13,color:th.text,fontWeight:600}}>{p.name}</span>
-              <input type="number" min="0" step="any" value={p.anticipo ?? ""} placeholder="0"
-                onChange={ev => setAnticipo(p.id, ev.target.value)} onBlur={() => persist(list)}
-                style={{...inputSt(th),marginBottom:0,width:110,textAlign:"right"}}/>
-              <span style={{fontSize:13,color:th.sub}}>€</span>
-            </div>
-          ))}
-          {totAnticipi>0 && (
-            <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${th.border}`}}>
-              {list.filter(p => anticipoOf(p)>0).map(p => {
-                const cr = creditoOf(p);
-                return (
-                  <div key={p.id} style={{fontSize:12,color:th.text,marginBottom:4}}>
-                    <b>{p.name}</b>:{" "}
-                    {cr>0
-                      ? <>quota coperta ✓ · <span style={{color:th.warn,fontWeight:700}}>deve incassare ancora {fmt(cr)}</span></>
-                      : anticipoOf(p)>=quota
-                        ? <span style={{color:th.ok,fontWeight:600}}>quota coperta ✓</span>
-                        : isPagata(p)
-                          ? <span style={{color:th.ok,fontWeight:600}}>saldata (anticipo {fmt(anticipoOf(p))} + resto) ✓</span>
-                          : <>restano <span style={{color:th.danger,fontWeight:700}}>{fmt(Math.max(0, quota - anticipoOf(p)))}</span> da versare</>}
-                  </div>
-                );
-              })}
             </div>
           )}
         </div>
@@ -1235,7 +1490,7 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
         </div>
         {candidates.length>0 && (
           <>
-            <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Aggiunta rapida (partecipanti al sondaggio):</div>
+            <div style={{fontSize:11,color:th.sub,marginBottom:6}}>Aggiunta rapida (partecipanti / iscritti):</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               {candidates.map(n => (
                 <button key={n} onClick={() => addPerson(n)}
@@ -1252,23 +1507,16 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
         ? <div style={{textAlign:"center",padding:30,color:th.sub,fontSize:14}}>Nessuna persona ancora.<br/>Aggiungi chi deve versare la quota 💶</div>
         : <div>
             <div style={{...sectTitle(th),marginBottom:8}}>Persone ({list.length})</div>
-            {list.map(p => {
-              const auto = quota>0 && anticipoOf(p) >= quota; // quota coperta dall'anticipo: non si toglie a mano
-              const pg   = isPagata(p);
-              return (
-                <div key={p.id} style={{...cardSt(th),marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-                  <div onClick={() => !auto && togglePaid(p.id)} title={auto?"Quota coperta dall'anticipo":pg?"Quota versata":"In attesa"}
-                    style={{width:34,height:34,borderRadius:9,flexShrink:0,cursor:auto?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,
-                      background:pg?th.ok:"transparent",border:`2px solid ${pg?th.ok:th.border}`,opacity:pg?1:0.4}}>💰</div>
-                  <div style={{flex:1,fontSize:14,fontWeight:600,color:th.text}}>
-                    {p.name}
-                    {creditoOf(p)>0 && <div style={{fontSize:11,fontWeight:600,color:th.warn}}>deve incassare {fmt(creditoOf(p))}</div>}
-                  </div>
-                  <span style={{fontSize:13,fontWeight:700,color:pg?th.ok:th.sub}}>{quota>0?fmt(quota):""}</span>
-                  <button onClick={() => removePerson(p.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:th.sub,padding:"4px"}}>✕</button>
-                </div>
-              );
-            })}
+            {list.map(p => (
+              <div key={p.id} style={{...cardSt(th),marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+                <div onClick={() => togglePaid(p.id)} title={p.paid?"Quota versata":"In attesa"}
+                  style={{width:34,height:34,borderRadius:9,flexShrink:0,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,
+                    background:p.paid?th.ok:"transparent",border:`2px solid ${p.paid?th.ok:th.border}`,opacity:p.paid?1:0.4}}>💰</div>
+                <div style={{flex:1,fontSize:14,fontWeight:600,color:th.text}}>{p.name}</div>
+                <span style={{fontSize:13,fontWeight:700,color:p.paid?th.ok:th.sub}}>{quota>0?fmt(quota):""}</span>
+                <button onClick={() => removePerson(p.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:th.sub,padding:"4px"}}>✕</button>
+              </div>
+            ))}
           </div>
       }
     </div>
@@ -1292,11 +1540,8 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
   const canManageQuote = e.gestione_quote && (isOwner || e.quote_delegato===user?.id);
   const shCount   = (e.shopping_list||[]).length;
   const shDone    = (e.shopping_list||[]).filter(i => i.done).length;
-  const shTot     = (e.shopping_list||[]).filter(i => i.done).reduce((s, i) => s + (Number(i.cost)||0), 0);
   const qCount    = (e.quote||[]).length;
-  // Una quota è coperta se versata a mano (💰) o se l'anticipo la copre
-  const evQuota   = (Number(e.quota_num)>0 && Number(e.quota_tot)>0) ? Number(e.quota_tot)/Number(e.quota_num) : 0;
-  const qPaid     = (e.quote||[]).filter(q => q.paid || (evQuota>0 && (Number(q.anticipo)||0) >= evQuota)).length;
+  const qPaid     = (e.quote||[]).filter(q => q.paid).length;
   const restricted = Array.isArray(e.visible_to) && e.visible_to.length > 0;
   const canManagePending = profile?.role==="admin" || e.created_by===user?.id;
 
@@ -1382,13 +1627,27 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
       )}
 
       {e.organizer  && <div style={{fontSize:13,color:th.sub,marginBottom:4}}>👤 {e.organizer}</div>}
-      {(e.date||e.time) && <div style={{fontSize:13,color:th.accent,fontWeight:600,marginBottom:4}}>{e.date&&`📅 ${fmtDateRange(e)}`}{e.date&&e.time&&"  "}{e.time&&`🕐 ${e.time}`}</div>}
+      {(e.date||e.time) && <div style={{fontSize:13,color:th.accent,fontWeight:600,marginBottom:4}}>{e.date&&`📅 ${fmtDate(e.date)}`}{e.date&&e.time&&"  "}{e.time&&`🕐 ${e.time}`}</div>}
       {e.deadline   && <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}><span style={{fontSize:13,color:th.sub}}>⏰ Scadenza: {fmtDate(e.deadline)}</span><DeadlineBadge deadline={e.deadline} th={th}/></div>}
       {e.last_edit  && <div style={{fontSize:12,color:th.warn,marginBottom:10,fontStyle:"italic",padding:"6px 10px",background:th.warn+"18",borderRadius:8}}>✏️ {e.last_edit}</div>}
       {e.address    && <div onClick={() => openMaps(e.address)} style={{...cardSt(th),display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:12}}><span style={{fontSize:18}}>📍</span><div><div style={{fontSize:13,color:th.text}}>{e.address}</div><div style={{fontSize:11,color:th.accent}}>Apri in Google Maps →</div></div></div>}
       {e.notes      && <div style={{...cardSt(th),marginBottom:12}}><div style={{fontSize:12,color:th.sub,marginBottom:4}}>📝 Note</div><div style={{fontSize:13,color:th.text,whiteSpace:"pre-wrap"}}>{e.notes}</div></div>}
       {e.flyer_url  && <img src={e.flyer_url} alt="Locandina" style={{width:"100%",borderRadius:12,marginBottom:12,objectFit:"contain",maxHeight:320,background:th.input}}/>}
-      {e.social     && <div style={{...cardSt(th),marginBottom:12}}><div style={{fontSize:12,color:th.sub,marginBottom:4}}>💬 Gruppo WhatsApp</div><a href={e.social} target="_blank" rel="noreferrer" style={{fontSize:13,color:th.accent,wordBreak:"break-all"}}>{e.social}</a></div>}
+      {e.social     && <div style={{...cardSt(th),marginBottom:12}}><div style={{fontSize:12,color:th.sub,marginBottom:4}}>🔗 Link social</div><a href={e.social} target="_blank" rel="noreferrer" style={{fontSize:13,color:th.accent,wordBreak:"break-all"}}>{e.social}</a></div>}
+
+      {e.lista_spesa && (
+        <button onClick={() => onShopping(e)} style={{...btnSt(th),width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
+          <span style={{fontWeight:600,color:th.text}}>🛒 Lista della spesa</span>
+          <span style={{fontSize:12,color:th.sub}}>{shCount===0?"Nulla ancora":`${shDone}/${shCount} acquistati`}</span>
+        </button>
+      )}
+
+      {canManageQuote && (
+        <button onClick={() => onQuote(e)} style={{...btnSt(th),width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
+          <span style={{fontWeight:600,color:th.text}}>💶 Gestione quote</span>
+          <span style={{fontSize:12,color:th.sub}}>{qCount===0?"Nessuno ancora":`💰 ${qPaid}/${qCount}`}</span>
+        </button>
+      )}
 
       <div style={{...cardSt(th),marginBottom:12}}>
         <div style={sectTitle(th)}>Risultati sondaggio</div>
@@ -1420,15 +1679,8 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
         <button onClick={copyResults} style={{...btnSt(th),flex:1}}>📋 Copia risultati</button>
       </div>
 
-      {e.date && (
-        <div style={{display:"flex",gap:8,marginBottom:12}}>
-          <button onClick={() => window.open(googleCalUrl(e), "_blank")} style={{...btnSt(th),flex:1}}>📆 Google Calendar</button>
-          <button onClick={() => downloadIcs(e)} style={{...btnSt(th),flex:1}}>📥 Scarica .ics</button>
-        </div>
-      )}
-
       {(e.participants||[]).length>0 && !blocked && (
-        <div style={{marginBottom:12}}>
+        <div style={{marginBottom:16}}>
           <div style={{fontSize:11,color:th.sub,marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>Ritira un voto</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
             {(profile?.role==="admin" ? e.participants||[] : (e.participants||[]).filter(p => p===(profile?.full_name||user?.email))).map(p => (
@@ -1448,20 +1700,6 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
             </div>
           )}
         </div>
-      )}
-
-      {e.lista_spesa && (
-        <button onClick={() => onShopping(e)} style={{...btnSt(th),width:"100%",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
-          <span style={{fontWeight:600,color:th.text}}>🛒 Lista Spesa</span>
-          <span style={{fontSize:12,color:th.sub}}>{shCount===0?"Nulla ancora":`${shDone}/${shCount} acquistati${shTot>0?` · ${fmtEur(shTot)}`:""}`}</span>
-        </button>
-      )}
-
-      {canManageQuote && (
-        <button onClick={() => onQuote(e)} style={{...btnSt(th),width:"100%",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",border:`1.5px solid ${th.border}`,padding:"12px 14px"}}>
-          <span style={{fontWeight:600,color:th.text}}>💶 Gestione quote</span>
-          <span style={{fontSize:12,color:th.sub}}>{qCount===0?"Nessuno ancora":`💰 ${qPaid}/${qCount}`}</span>
-        </button>
       )}
 
       {isOwner && (
@@ -1494,15 +1732,7 @@ function VoteView({ event, events, th, profile, user, onBack, onSubmit, saving }
   const [compInput, setCompInput]   = useState("");
   const e    = events.find(x => x.id===event.id) || event;
   const isM  = e.multi_select === true || e.multiSelect === true;
-  const multiDay = isMultiDay(e);
   const name = profile?.full_name || user?.email || "Utente";
-
-  // Voto multi-giorno: «Tutto il periodo» e i singoli giorni si escludono a vicenda
-  const toggleOpt = (o) => {
-    if (!isM) return setSel([o]);
-    if (o === WHOLE_PERIOD) return setSel(p => p.includes(o) ? [] : [o]);
-    setSel(p => { const b = p.filter(x => x !== WHOLE_PERIOD); return b.includes(o) ? b.filter(x => x !== o) : [...b, o]; });
-  };
 
   const addCompanion = () => {
     const n = compInput.trim();
@@ -1522,12 +1752,12 @@ function VoteView({ event, events, th, profile, user, onBack, onSubmit, saving }
     <div>
       <button onClick={onBack} style={backBtn(th)}>← Indietro</button>
       <h2 style={{margin:"0 0 4px",fontSize:18,color:th.text}}>{e.title}</h2>
-      <div style={{fontSize:13,color:th.sub,marginBottom:12}}>{multiDay ? "Seleziona i giorni in cui partecipi, oppure «Tutto il periodo»" : isM ? "Puoi selezionare più opzioni" : "Seleziona una sola opzione"}</div>
+      <div style={{fontSize:13,color:th.sub,marginBottom:12}}>{isM ? "Puoi selezionare più opzioni" : "Seleziona una sola opzione"}</div>
       <div style={{fontSize:13,color:th.accent,marginBottom:16}}>Stai votando come: <b>{name}</b></div>
       {(e.options||[]).map(o => {
         const s = sel.includes(o);
         return (
-          <div key={o} onClick={() => toggleOpt(o)}
+          <div key={o} onClick={() => isM ? setSel(p => p.includes(o) ? p.filter(x=>x!==o) : [...p, o]) : setSel([o])}
             style={{...cardSt(th),marginBottom:8,cursor:"pointer",border:`2px solid ${s?th.accent:th.border}`,background:s?th.accent+"18":th.card}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{fontSize:14,color:th.text}}>{o}</span>
@@ -1586,28 +1816,6 @@ function VoteView({ event, events, th, profile, user, onBack, onSubmit, saving }
   );
 }
 
-// ── Helper: ridimensiona un'immagine lato client (max px sul lato lungo) ──
-const resizeImageFile = (file, max, quality) => new Promise((resolve) => {
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const img = new Image();
-    img.onload = () => {
-      let w = img.width, h = img.height;
-      if (w > max || h > max) {
-        if (w > h) { h = Math.round(h * max / w); w = max; }
-        else       { w = Math.round(w * max / h); h = max; }
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL("image/jpeg", quality);
-      resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg", preview: dataUrl });
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
-});
-
 // ── Helper: carica locandina su Supabase Storage ──────────────
 async function uploadFlyer(base64, mediaType, userId) {
   const ext = mediaType === "image/png" ? "png" : "jpg";
@@ -1628,10 +1836,32 @@ function ImportFromPostCard({ th, onImport, userId }) {
   const [msg,     setMsg]     = React.useState("");
   const fileRef = React.useRef(null);
 
+  const resizeImage = (file) => new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1024;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else       { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg", preview: dataUrl });
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImgData(await resizeImageFile(file, 1024, 0.85));
+    setImgData(await resizeImage(file));
     setMsg("");
   };
 
@@ -1716,8 +1946,6 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
     organizer:   event?.organizer  || profile?.full_name || "",
     address:     event?.address    || "",
     date:        event?.date       || "",
-    multiDay:    !!(event?.end_date && event.date && event.end_date > event.date),
-    endDate:     event?.end_date   || "",
     time:        event?.time       || "",
     deadline:    event?.deadline   || "",
     notes:       event?.notes      || "",
@@ -1726,7 +1954,7 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
     status:      event?.status     || "open",
     multiSelect: event?.multiSelect || event?.multi_select || false,
     listaSpesa:  event?.lista_spesa || false,
-    gestioneQuote: !!(event?.gestione_quote || event?.lista_spesa),
+    gestioneQuote: event?.gestione_quote || false,
     quoteDelegato: event?.quote_delegato || "",
     publishNow:  event ? !event.pending_approval : true,
     options:     event?.options?.length ? [...event.options] : [""],
@@ -1741,7 +1969,27 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
     if (!file || !userId) return;
     setFlyerUploading(true);
     try {
-      const resized = await resizeImageFile(file, 1200, 0.88);
+      const resized = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => {
+            const MAX = 1200;
+            let w = img.width, h = img.height;
+            if (w > MAX || h > MAX) {
+              if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+              else       { w = Math.round(w * MAX / h); h = MAX; }
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = w; canvas.height = h;
+            canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
+            resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
       const url = await uploadFlyer(resized.base64, resized.mediaType, userId);
       setForm(f => ({...f, flyer_url: url}));
     } catch (err) {
@@ -1762,17 +2010,12 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
 
       <div style={{display:"flex",gap:20,marginBottom:14,flexWrap:"wrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:13,color:th.text}}>🛒 Lista Spesa</span>
-          <Toggle value={form.listaSpesa} onChange={() => setForm(f => {
-            const on = !f.listaSpesa;
-            // La lista della spesa attiva sempre anche la gestione quote
-            return {...f, listaSpesa: on, gestioneQuote: on ? true : f.gestioneQuote};
-          })} th={th}/>
+          <span style={{fontSize:13,color:th.text}}>🛒 Lista della spesa</span>
+          <Toggle value={form.listaSpesa} onChange={() => setForm(f => ({...f, listaSpesa:!f.listaSpesa}))} th={th}/>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:13,color:th.text}}>💶 Gestione quote</span>
-          <Toggle value={form.gestioneQuote} onChange={() => setForm(f => f.listaSpesa ? f : ({...f, gestioneQuote:!f.gestioneQuote, quoteDelegato:""}))} th={th}/>
-          {form.listaSpesa && <span style={{fontSize:11,color:th.sub}}>richiesta dalla lista</span>}
+          <Toggle value={form.gestioneQuote} onChange={() => setForm(f => ({...f, gestioneQuote:!f.gestioneQuote, quoteDelegato:""}))} th={th}/>
         </div>
       </div>
       {form.gestioneQuote && (
@@ -1793,27 +2036,17 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
       <input value={form.organizer} onChange={e => setForm(f => ({...f, organizer:e.target.value}))} placeholder="Il tuo nome" style={inputSt(th)}/>
       <label style={labelSt(th)}>Indirizzo / Luogo</label>
       <input value={form.address} onChange={e => setForm(f => ({...f, address:e.target.value}))} placeholder="Via, Città..." style={inputSt(th)}/>
-      <label style={labelSt(th)}>{form.multiDay ? "Data inizio *" : "Data evento *"} <span style={{color:th.sub,fontWeight:400,textTransform:"none"}}>e ora</span></label>
+      <label style={labelSt(th)}>Data evento * <span style={{color:th.sub,fontWeight:400,textTransform:"none"}}>e ora</span></label>
       <div style={{display:"flex",gap:8,marginBottom:12}}>
         <input type="date" value={form.date} onChange={e => setForm(f => ({...f, date:e.target.value}))} style={{...inputSt(th),marginBottom:0,flex:2}}/>
         <input type="time" value={form.time} onChange={e => setForm(f => ({...f, time:e.target.value}))} style={{...inputSt(th),marginBottom:0,flex:1}}/>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:form.multiDay?12:14}}>
-        <span style={{fontSize:13,color:th.text}}>📆 Evento su più giorni</span>
-        <Toggle value={form.multiDay} onChange={() => setForm(f => ({...f, multiDay:!f.multiDay}))} th={th}/>
-      </div>
-      {form.multiDay && (
-        <>
-          <label style={labelSt(th)}>Data fine *</label>
-          <input type="date" value={form.endDate} min={form.date} onChange={e => setForm(f => ({...f, endDate:e.target.value}))} style={inputSt(th)}/>
-        </>
-      )}
       <label style={labelSt(th)}>Scadenza sondaggio</label>
       <input type="date" value={form.deadline} onChange={e => setForm(f => ({...f, deadline:e.target.value}))} style={inputSt(th)}/>
       <label style={labelSt(th)}>Note</label>
       <textarea value={form.notes} onChange={e => setForm(f => ({...f, notes:e.target.value}))} placeholder="Descrizione..." style={{...inputSt(th),height:72,resize:"vertical"}}/>
-      <label style={labelSt(th)}>Gruppo WhatsApp</label>
-      <input value={form.social} onChange={e => setForm(f => ({...f, social:e.target.value}))} placeholder="https://chat.whatsapp.com/..." style={inputSt(th)}/>
+      <label style={labelSt(th)}>Link social</label>
+      <input value={form.social} onChange={e => setForm(f => ({...f, social:e.target.value}))} placeholder="https://instagram.com/... o altro link" style={inputSt(th)}/>
 
       <label style={labelSt(th)}>Locandina</label>
       <input ref={flyerRef} type="file" accept="image/*" onChange={handleFlyerFile} style={{display:"none"}}/>
@@ -1847,39 +2080,22 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
         })}
       </div>
 
-      {!form.multiDay ? (
-        <>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-            <span style={{fontSize:13,color:th.text}}>Selezione multipla</span>
-            <Toggle value={form.multiSelect} onChange={() => setForm(f => ({...f, multiSelect:!f.multiSelect}))} th={th}/>
-          </div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <span style={{fontSize:13,color:th.text}}>Selezione multipla</span>
+        <Toggle value={form.multiSelect} onChange={() => setForm(f => ({...f, multiSelect:!f.multiSelect}))} th={th}/>
+      </div>
 
-          <label style={labelSt(th)}>Opzioni * {isEdit && <span style={{color:th.sub,fontWeight:400,textTransform:"none"}}>(voti conservati)</span>}</label>
-          {form.options.map((o, i) => (
-            <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
-              <div style={{width:22,height:22,borderRadius:"50%",background:th.accent,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{i+1}</div>
-              <input value={o} onChange={e => updOpt(i, e.target.value)} placeholder={`Opzione ${i+1}…`} style={{...inputSt(th),marginBottom:0,flex:1}}/>
-              {form.options.length > (form.multiSelect ? 2 : 1) && (
-                <button onClick={() => setForm(f => ({...f, options:f.options.filter((_,idx) => idx!==i)}))} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:th.sub}}>✕</button>
-              )}
-            </div>
-          ))}
-          <button onClick={() => setForm(f => ({...f, options:[...f.options,""]}))} style={{...btnSt(th),width:"100%",marginBottom:16,border:`1.5px dashed ${th.border}`,background:"transparent",color:th.accent,fontWeight:600}}>+ Aggiungi opzione</button>
-        </>
-      ) : (
-        <div style={{...cardSt(th),marginBottom:16}}>
-          <div style={sectTitle(th)}>🗳️ Voto sui giorni</div>
-          <div style={{fontSize:12,color:th.sub,marginBottom:(form.endDate && form.endDate>form.date)?10:0}}>I partecipanti potranno votare i singoli giorni o l'intero periodo.</div>
-          {form.endDate && form.endDate>form.date && (
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {dateRange(form.date, form.endDate).map(ds => (
-                <span key={ds} style={{background:th.accent+"22",color:th.accent,borderRadius:10,padding:"3px 8px",fontSize:11,fontWeight:600}}>{dayOptLabel(ds)}</span>
-              ))}
-              <span style={{background:th.ok+"22",color:th.ok,borderRadius:10,padding:"3px 8px",fontSize:11,fontWeight:600}}>{WHOLE_PERIOD}</span>
-            </div>
+      <label style={labelSt(th)}>Opzioni * {isEdit && <span style={{color:th.sub,fontWeight:400,textTransform:"none"}}>(voti conservati)</span>}</label>
+      {form.options.map((o, i) => (
+        <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+          <div style={{width:22,height:22,borderRadius:"50%",background:th.accent,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{i+1}</div>
+          <input value={o} onChange={e => updOpt(i, e.target.value)} placeholder={`Opzione ${i+1}…`} style={{...inputSt(th),marginBottom:0,flex:1}}/>
+          {form.options.length > (form.multiSelect ? 2 : 1) && (
+            <button onClick={() => setForm(f => ({...f, options:f.options.filter((_,idx) => idx!==i)}))} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:th.sub}}>✕</button>
           )}
         </div>
-      )}
+      ))}
+      <button onClick={() => setForm(f => ({...f, options:[...f.options,""]}))} style={{...btnSt(th),width:"100%",marginBottom:16,border:`1.5px dashed ${th.border}`,background:"transparent",color:th.accent,fontWeight:600}}>+ Aggiungi opzione</button>
 
       <div style={{...cardSt(th),marginBottom:16}}>
           <div style={sectTitle(th)}>👁️ Chi può vederlo</div>
@@ -2063,7 +2279,6 @@ function App() {
   const [user,    setUser]    = useState(null);
   const [profile, setProfile] = useState(null);
   const [profileLoaded, setPL]= useState(false);
-  const [authNotice, setAuthNotice] = useState("");
   const [view,    setView]    = useState("calendar");
   const [tab,     setTab]     = useState("cal");
   const [events,  setEvents]  = useState([]);
@@ -2071,6 +2286,8 @@ function App() {
   const [ferie,   setFerie]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [selEvent,setSelEvent]= useState(null);
+  const [adminSection, setAdminSection] = useState("users"); // sezione admin da ripristinare al ritorno
+  const [editFrom, setEditFrom] = useState("event");          // da dove si è aperta la modifica evento
   const [calDate, setCalDate] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
   const [filtDay, setFiltDay] = useState(null);
   const [toast,   setToast]   = useState(null);
@@ -2081,14 +2298,12 @@ function App() {
   const [ptrLoading, setPtrLoading] = useState(false);
   const ptrStartY = React.useRef(0);
   const ptrActive = React.useRef(false);
-  const toastTimer = React.useRef(null);
   const PTR_THRESHOLD = 70;
 
   const th = useMemo(() => dark ? DARK : LIGHT, [dark]);
 
   const toggleDark = () => setDark(d => { localStorage.setItem("bacheca_dark", d?"0":"1"); return !d; });
-  // Il timer precedente va annullato, altrimenti un toast vecchio nasconde quello nuovo in anticipo
-  const showToast  = msg => { setToast(msg); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 2500); };
+  const showToast  = msg => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
@@ -2106,11 +2321,7 @@ function App() {
     if (!user) return;
     sb.from("profiles").select("*").eq("id", user.id).single()
       .then(({ data }) => {
-        if (data?.blocked) {
-          setAuthNotice("🚫 Il tuo account è stato bloccato da un amministratore.");
-          sb.auth.signOut();
-          return;
-        }
+        if (data?.blocked) { sb.auth.signOut(); showToast("🚫 Account bloccato. Contatta l'amministratore."); return; }
         if (data) setProfile(data);
         setPL(true);
       });
@@ -2151,17 +2362,6 @@ function App() {
 
   useEffect(() => { if (auth==="app") loadFerie(); }, [auth, loadFerie]);
 
-  // Aggiornamento live (richiede Realtime abilitato sulle tabelle: vedi supabase/migrations).
-  // Se Realtime non è attivo la sottoscrizione resta semplicemente muta.
-  useEffect(() => {
-    if (auth !== "app" || !profileLoaded) return;
-    const ch = sb.channel("db-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "events" }, () => loadEvents())
-      .on("postgres_changes", { event: "*", schema: "public", table: "ferie"  }, () => loadFerie())
-      .subscribe();
-    return () => { sb.removeChannel(ch); };
-  }, [auth, profileLoaded, loadEvents, loadFerie]);
-
   const handleAddFerie = async (start, end, note) => {
     const { error } = await sb.from("ferie").insert({ user_id: user.id, start_date: start, end_date: end, note: note || null });
     if (error) { showToast("❌ " + error.message); return; }
@@ -2194,16 +2394,15 @@ function App() {
     const cmp = (a, b) => (a||"").trim() === (b||"").trim();
     if (!cmp(old.title,    form.title))    changes.push("titolo");
     if (!cmp(old.date,     form.date))     changes.push("data");
-    if ((old.end_date||"") !== (form.multiDay ? form.endDate : "")) changes.push("durata");
     if (!cmp(old.time,     form.time))     changes.push("orario");
     if (!cmp(old.address,  form.address))  changes.push("luogo");
     if (!cmp(old.deadline, form.deadline)) changes.push("scadenza");
     if (!cmp(old.notes,    form.notes))    changes.push("note");
-    if (!cmp(old.social,   form.social))   changes.push("gruppo whatsapp");
+    if (!cmp(old.social,   form.social))   changes.push("link social");
     if (!cmp(old.flyer_url||"", form.flyer_url||"")) changes.push("locandina");
     if (!cmp(old.status,   form.status))   changes.push("stato");
     if (!!(old.multiSelect||old.multi_select) !== !!form.multiSelect) changes.push("tipo selezione");
-    if (!!old.lista_spesa !== !!form.listaSpesa) changes.push("lista spesa");
+    if (!!old.lista_spesa !== !!form.listaSpesa) changes.push("lista della spesa");
     if (!!old.gestione_quote !== !!form.gestioneQuote) changes.push("gestione quote");
     if ((old.quote_delegato||"") !== (form.quoteDelegato||"")) changes.push("delegato quote");
     const oldVis = (old.visible_to||[]).slice().sort();
@@ -2217,23 +2416,17 @@ function App() {
   };
 
   const handleCreate = async form => {
+    const opts = form.options.map(o => o.trim()).filter(Boolean);
     if (!form.title.trim()) return showToast("Inserisci un titolo!");
     if (!form.date)         return showToast("Inserisci la data dell'evento!");
-    const multiDay = form.multiDay && form.endDate && form.endDate > form.date;
-    if (form.multiDay && !multiDay) return showToast("La data di fine deve essere successiva alla data di inizio!");
-    let opts, multiSel;
-    if (multiDay) { opts = buildMultiDayOptions(form.date, form.endDate); multiSel = true; }
-    else {
-      opts = form.options.map(o => o.trim()).filter(Boolean); multiSel = form.multiSelect;
-      if (opts.length < 1)    return showToast("Aggiungi almeno un'opzione!");
-      if (multiSel && opts.length < 2) return showToast("Con selezione multipla servono almeno 2 opzioni!");
-    }
+    if (opts.length < 1)    return showToast("Aggiungi almeno un'opzione!");
+    if (form.multiSelect && opts.length < 2) return showToast("Con selezione multipla servono almeno 2 opzioni!");
     setSaving(true);
     const votes = {}; opts.forEach(o => { votes[o] = []; });
     const { data, error } = await sb.from("events").insert({
       title:form.title.trim(), organizer:orNull(form.organizer)||profile?.full_name, address:orNull(form.address),
-      date:orNull(form.date), end_date: multiDay ? form.endDate : null, time:orNull(form.time), deadline:orNull(form.deadline), notes:orNull(form.notes), social:orNull(form.social), flyer_url:orNull(form.flyer_url),
-      status:form.status, multi_select:multiSel, lista_spesa:form.listaSpesa,
+      date:orNull(form.date), time:orNull(form.time), deadline:orNull(form.deadline), notes:orNull(form.notes), social:orNull(form.social), flyer_url:orNull(form.flyer_url),
+      status:form.status, multi_select:form.multiSelect, lista_spesa:form.listaSpesa,
       gestione_quote:form.gestioneQuote, quote:[], quote_delegato:orNull(form.quoteDelegato),
       options:opts, participants:[], votes, shopping_list:[], created_by:user.id,
       visible_to: form.visMode==="some" ? form.visibleTo : [], pending_approval: form.publishNow === false, source:"manual",
@@ -2245,32 +2438,26 @@ function App() {
   };
 
   const handleEdit = async (form, old) => {
+    const opts = form.options.map(o => o.trim()).filter(Boolean);
     if (!form.title.trim()) return showToast("Inserisci un titolo!");
     if (!form.date)         return showToast("Inserisci la data dell'evento!");
-    const multiDay = form.multiDay && form.endDate && form.endDate > form.date;
-    if (form.multiDay && !multiDay) return showToast("La data di fine deve essere successiva alla data di inizio!");
-    let opts, multiSel;
-    if (multiDay) { opts = buildMultiDayOptions(form.date, form.endDate); multiSel = true; }
-    else {
-      opts = form.options.map(o => o.trim()).filter(Boolean); multiSel = form.multiSelect;
-      if (opts.length < 1)    return showToast("Aggiungi almeno un'opzione!");
-      if (multiSel && opts.length < 2) return showToast("Con selezione multipla servono almeno 2 opzioni!");
-    }
-    const log = buildEditLog(old, {...form, options:opts, multiSelect:multiSel});
+    if (opts.length < 1)    return showToast("Aggiungi almeno un'opzione!");
+    if (form.multiSelect && opts.length < 2) return showToast("Con selezione multipla servono almeno 2 opzioni!");
+    const log = buildEditLog(old, {...form, options:opts});
     if (!log) { showToast("Nessuna modifica rilevata."); return; }
     const votes = {...old.votes}; opts.forEach(o => { if (!votes[o]) votes[o] = []; });
     setSaving(true);
     const { error } = await sb.from("events").update({
-      title:form.title.trim(), organizer:orNull(form.organizer), address:orNull(form.address), date:orNull(form.date), end_date: multiDay ? form.endDate : null, time:orNull(form.time),
+      title:form.title.trim(), organizer:orNull(form.organizer), address:orNull(form.address), date:orNull(form.date), time:orNull(form.time),
       deadline:orNull(form.deadline), notes:orNull(form.notes), social:orNull(form.social), flyer_url:orNull(form.flyer_url), status:form.status,
-      multi_select:multiSel, lista_spesa:form.listaSpesa, options:opts, votes, last_edit:log,
+      multi_select:form.multiSelect, lista_spesa:form.listaSpesa, options:opts, votes, last_edit:log,
       gestione_quote:form.gestioneQuote, quote_delegato:orNull(form.quoteDelegato),
       visible_to: form.visMode==="some" ? form.visibleTo : [],
     }).eq("id", old.id);
     setSaving(false);
     if (error) return showToast("❌ Errore salvataggio: " + error.message);
     await logActivity("Evento modificato", {...old, ...form}, log);
-    showToast("✏️ Modifiche salvate!"); await loadEvents(); setView("event");
+    showToast("✏️ Modifiche salvate!"); await loadEvents(); setView(editFrom==="admin" ? "admin" : "event");
   };
 
   const handleVote = async (voters, sel) => {
@@ -2325,21 +2512,16 @@ function App() {
   };
 
   const handleShopSave = async (id, shopping_list) => {
-    const { error } = await sb.rpc("save_shopping_list", { p_event_id:id, p_shopping_list:shopping_list });
+    const { error } = await sb.from("events").update({ shopping_list }).eq("id", id);
     if (error) { showToast("❌ Errore salvataggio"); return; }
     setEvents(p => p.map(e => e.id===id ? {...e, shopping_list} : e));
   };
 
   const handleQuoteSave = async (id, patch) => {
-    const cur = events.find(e => e.id===id) || {};
-    const quote     = patch.quote     !== undefined ? patch.quote     : (cur.quote||[]);
-    const quota_num = patch.quota_num !== undefined ? patch.quota_num : (cur.quota_num||0);
-    const quota_tot = patch.quota_tot !== undefined ? patch.quota_tot : (cur.quota_tot||0);
-    const { error } = await sb.rpc("save_quotes", { p_event_id:id, p_quote:quote, p_quota_num:Number(quota_num)||0, p_quota_tot:Number(quota_tot)||0 });
-    if (error) { showToast("❌ Errore salvataggio"); return false; }
-    setEvents(p => p.map(e => e.id===id ? {...e, quote, quota_num, quota_tot} : e));
+    const { error } = await sb.from("events").update(patch).eq("id", id);
+    if (error) { showToast("❌ Errore salvataggio"); return; }
+    setEvents(p => p.map(e => e.id===id ? {...e, ...patch} : e));
     showToast("💾 Salvato!");
-    return true;
   };
 
   const handleLogout = async () => { await sb.auth.signOut(); setView("calendar"); setTab("cal"); };
@@ -2351,17 +2533,17 @@ function App() {
     </div>
   );
   if (auth === "recovery") return <PasswordRecoveryView th={th} onDone={() => setAuth("login")}/>;
-  if (auth === "login")    return <LoginView th={th} notice={authNotice} onGoRegister={() => { setAuthNotice(""); setAuth("register"); }} onRecovery={u => { setUser(u); setAuth("recovery"); }}/>;
+  if (auth === "login")    return <LoginView th={th} onGoRegister={() => setAuth("register")} onRecovery={u => { setUser(u); setAuth("recovery"); }}/>;
   if (auth === "register") return <RegisterView th={th} onGoLogin={() => setAuth("login")}/>;
 
   const mainContent = () => {
-    if (view==="event")    return <EventDetail event={selEvent} events={events} th={th} user={user} profile={profile} users={allUsers} onBack={() => setView("calendar")} onVote={() => setView("vote")} onToast={showToast} onStatusChange={handleStatusChange} onCancelVote={handleCancelVote} onDelete={handleDelete} onEdit={e => { setSelEvent(e); setView("edit"); }} onShopping={e => { setSelEvent(e); setView("shopping"); }} onQuote={e => { setSelEvent(e); setView("quote"); }} onPublish={handlePublish}/>;
+    if (view==="event")    return <EventDetail event={selEvent} events={events} th={th} user={user} profile={profile} users={allUsers} onBack={() => setView("calendar")} onVote={() => setView("vote")} onToast={showToast} onStatusChange={handleStatusChange} onCancelVote={handleCancelVote} onDelete={handleDelete} onEdit={e => { setEditFrom("event"); setSelEvent(e); setView("edit"); }} onShopping={e => { setSelEvent(e); setView("shopping"); }} onQuote={e => { setSelEvent(e); setView("quote"); }} onPublish={handlePublish}/>;
     if (view==="vote")     return <VoteView event={selEvent} events={events} th={th} profile={profile} user={user} onBack={() => setView("event")} onSubmit={handleVote} saving={saving}/>;
-    if (view==="edit")     return <EventForm event={selEvent} th={th} onBack={() => setView("event")} onSubmit={form => handleEdit(form, selEvent)} saving={saving} isEdit={true} profile={profile} users={allUsers} userId={user?.id}/>;
-    if (view==="shopping") return <ShoppingListView event={selEvent} events={events} th={th} user={user} profile={profile} onBack={() => setView("event")} onSave={handleShopSave} onGoQuote={async (id, patch) => { if (await handleQuoteSave(id, patch)) setView("quote"); }}/>;
+    if (view==="edit")     return <EventForm event={selEvent} th={th} onBack={() => setView(editFrom==="admin" ? "admin" : "event")} onSubmit={form => handleEdit(form, selEvent)} saving={saving} isEdit={true} profile={profile} users={allUsers} userId={user?.id}/>;
+    if (view==="shopping") return <ShoppingListView event={selEvent} events={events} th={th} onBack={() => setView("event")} onSave={handleShopSave}/>;
     if (view==="quote")    return <QuoteView event={selEvent} events={events} th={th} users={allUsers} onBack={() => setView("event")} onSave={handleQuoteSave}/>;
     if (view==="profile")  return <ProfileView th={th} user={user} profile={profile} onBack={() => setView("calendar")} onLogout={handleLogout}/>;
-    if (view==="admin")    return <AdminView th={th} user={user} onBack={() => setView("calendar")} showToast={showToast} pendingEvents={pendingEvents} onPublish={handlePublish} onEditEvent={e => { setSelEvent(e); setView("edit"); }} onDeleteEvent={handleDelete} trashRefresh={trashRefresh}/>;
+    if (view==="admin")    return <AdminView th={th} user={user} onBack={() => setView("calendar")} showToast={showToast} pendingEvents={pendingEvents} onPublish={handlePublish} onEditEvent={e => { setEditFrom("admin"); setSelEvent(e); setView("edit"); }} onDeleteEvent={handleDelete} trashRefresh={trashRefresh} initialSection={adminSection} onSection={setAdminSection}/>;
     if (tab==="new")       return <EventForm th={th} profile={profile} users={allUsers} onBack={() => { setTab("cal"); setView("calendar"); }} onSubmit={handleCreate} saving={saving} isEdit={false} userId={user?.id}/>;
     if (tab==="search")    return <SearchView events={visibleEvents} th={th} onOpen={openEvent} onBack={() => setTab("cal")}/>;
     if (tab==="ferie")     return <FerieView th={th} user={user} ferie={ferie} users={allUsers} onAdd={handleAddFerie} onDelete={handleDeleteFerie} onBack={() => setTab("cal")}/>;
@@ -2369,9 +2551,8 @@ function App() {
     const now = new Date();
     const future = visibleEvents.filter(e => {
       if (!e.date) return true;
-      const endDay  = e.end_date || e.date;
-      const timeStr = e.end_date ? "23:59" : (e.time || "23:59");
-      const eventEnd = new Date(endDay + "T" + timeStr);
+      const timeStr = e.time || "23:59";
+      const eventEnd = new Date(e.date + "T" + timeStr);
       eventEnd.setMinutes(eventEnd.getMinutes() + 1);
       return now < eventEnd;
     });
@@ -2522,12 +2703,6 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
-</script>
-<script>
-// PWA: registra il service worker (no-op se non supportato o file assente)
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
-}
 </script>
 </body>
 </html>
