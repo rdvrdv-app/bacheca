@@ -4,6 +4,13 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Bacheca</title>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin/>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
+  <link rel="preconnect" href="https://divxqcadlishdfhpvixd.supabase.co" crossorigin/>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#7EB8D4"/>
+  <link rel="icon" href="icon.svg" type="image/svg+xml"/>
+  <link rel="apple-touch-icon" href="icon.svg"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -2268,32 +2275,6 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
       {isEdit && <div style={{fontSize:12,color:th.warn,marginBottom:16,padding:"6px 10px",background:th.warn+"18",borderRadius:8}}>⚠️ I voti esistenti verranno mantenuti.</div>}
       {!isEdit && <ImportFromPostCard th={th} userId={userId} onImport={patch => setForm(f => ({...f, ...patch}))}/>}
 
-      <div style={{display:"flex",gap:20,marginBottom:14,flexWrap:"wrap"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:13,color:th.text}}>🛒 Lista Spesa</span>
-          <Toggle value={form.listaSpesa} onChange={() => setForm(f => {
-            const on = !f.listaSpesa;
-            // La lista della spesa attiva sempre anche la gestione quote
-            return {...f, listaSpesa: on, gestioneQuote: on ? true : f.gestioneQuote};
-          })} th={th}/>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:13,color:th.text}}>💶 Gestione quote</span>
-          <Toggle value={form.gestioneQuote} onChange={() => setForm(f => f.listaSpesa ? f : ({...f, gestioneQuote:!f.gestioneQuote, quoteDelegato:""}))} th={th}/>
-        </div>
-      </div>
-      {form.gestioneQuote && (
-        <div style={{marginBottom:14}}>
-          <label style={labelSt(th)}>👤 Delegato raccolta quote <span style={{color:th.sub,fontWeight:400,textTransform:"none"}}>(opzionale)</span></label>
-          <select value={form.quoteDelegato} onChange={e => setForm(f => ({...f, quoteDelegato:e.target.value}))} style={{...inputSt(th),marginBottom:0}}>
-            <option value="">— Solo io (owner) —</option>
-            {users.filter(u => u.id !== userId).map(u => (
-              <option key={u.id} value={u.id}>{u.full_name || u.email}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
       <label style={labelSt(th)}>Titolo evento *</label>
       <input value={form.title} onChange={e => setForm(f => ({...f, title:e.target.value}))} placeholder="Es. Concerto, Cena..." style={inputSt(th)}/>
       <label style={labelSt(th)}>Organizzatore</label>
@@ -2353,6 +2334,32 @@ function EventForm({ event, th, onBack, onSubmit, saving, isEdit, profile, users
           );
         })}
       </div>
+
+      <div style={{display:"flex",gap:20,marginBottom:14,flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:13,color:th.text}}>🛒 Lista Spesa</span>
+          <Toggle value={form.listaSpesa} onChange={() => setForm(f => {
+            const on = !f.listaSpesa;
+            // La lista della spesa attiva sempre anche la gestione quote
+            return {...f, listaSpesa: on, gestioneQuote: on ? true : f.gestioneQuote};
+          })} th={th}/>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:13,color:th.text}}>💶 Gestione quote</span>
+          <Toggle value={form.gestioneQuote} onChange={() => setForm(f => f.listaSpesa ? f : ({...f, gestioneQuote:!f.gestioneQuote, quoteDelegato:""}))} th={th}/>
+        </div>
+      </div>
+      {form.gestioneQuote && (
+        <div style={{marginBottom:14}}>
+          <label style={labelSt(th)}>👤 Delegato raccolta quote <span style={{color:th.sub,fontWeight:400,textTransform:"none"}}>(opzionale)</span></label>
+          <select value={form.quoteDelegato} onChange={e => setForm(f => ({...f, quoteDelegato:e.target.value}))} style={{...inputSt(th),marginBottom:0}}>
+            <option value="">— Solo io (owner) —</option>
+            {users.filter(u => u.id !== userId).map(u => (
+              <option key={u.id} value={u.id}>{u.full_name || u.email}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {!form.multiDay ? (
         <>
@@ -3008,6 +3015,11 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+
+// PWA: registra il service worker (app installabile + apertura offline)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
 </script>
 </body>
 </html>
