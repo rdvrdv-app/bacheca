@@ -24,14 +24,20 @@ spesa per evento, gestione quote con anticipi, notifiche Telegram.
 
 - **Strategia adottata il 14-06-2026**: un **solo repo** (`bacheca`). Lo sviluppo
   avviene su **feature branch**; si fa merge in `main` solo quando è pronto, così
-  prod resta stabile. Il vecchio repo separato `bacheca-dev` è stato dismesso
-  (causava il doppio `index.html` da tenere allineato). **Il DB `Bacheca-Dev`
-  resta** come sandbox per i test.
-- `index.html` contiene URL+chiave anon Supabase: di default `main` punta a
-  **Bacheca (prod)**. Per testare su un branch, puntare temporaneamente a
-  **Bacheca-Dev** (credenziali nel commento del blocco `// ── Config`) e
-  **ripristinare i valori prod prima del merge**.
-- Per testare a mano: scaricare `index.html` dal branch e aprirlo in locale.
+  prod resta stabile. Il vecchio repo separato `bacheca-dev` è stato **eliminato
+  il 14-06-2026** (causava il doppio `index.html` da tenere allineato). **Il DB
+  `Bacheca-Dev` (`xgzmjxththubvpfwgsnu`) resta attivo** come sandbox per i test.
+- **Switch ambiente automatico (dal 14-06-2026)**: `index.html` contiene **entrambe**
+  le config Supabase (`SUPABASE_ENVS` nel blocco `// ── Config`) e sceglie a
+  runtime — **niente più credenziali da modificare a mano**:
+  - host `rdvrdv-app.github.io` → **prod** (Bacheca);
+  - qualunque altro contesto (file locale, `localhost`, branch di test) → **dev** (Bacheca-Dev);
+  - override per una visita: `?env=dev` / `?env=prod`.
+  - quando NON si è in prod compare in basso a destra un badge **🧪 DEV DB**.
+  Le anon key sono pubbliche (la sicurezza è data dalle RLS), quindi tenerle
+  entrambe nel file è sicuro. **Promozione in prod = solo merge in `main`.**
+- Per testare a mano: scaricare/aprire `index.html` del branch in locale → usa
+  già il DB dev in automatico.
 - Rollback di prod: vedi `docs/ROLLBACK.md`.
 
 ## Struttura repo
@@ -130,13 +136,16 @@ Trigger Postgres su `events`: `trigger_notify_new_event` e
 Attivo su prod e dev (publication `supabase_realtime` su `events` e `ferie`):
 il client si sottoscrive e ricarica da solo. Niente più pull-to-refresh necessario.
 
-## Come rilasciare in prod (flusso usato finora)
+## Come rilasciare in prod (flusso attuale)
 
-1. Sviluppo e test sul branch dev (che punta a Bacheca-Dev).
-2. Commit di "ripristino credenziali prod" oppure cherry-pick su `main`
-   verificando che `SUPABASE_URL` attivo sia `divxqcadlishdfhpvixd`.
-3. Push di `main` → la Action compila e pubblica da sola.
-4. Modifiche al DB prod: via migration SQL (documentarle in `supabase/migrations/`).
+1. Sviluppo su un **feature branch**; testo aprendo `index.html` in locale →
+   usa **Bacheca-Dev** in automatico (badge 🧪 DEV DB). Niente credenziali da toccare.
+2. Eventuali modifiche di schema: applicarle **prima su Bacheca-Dev**, poi (alla
+   promozione) **su Bacheca**, sempre via migration SQL versionata in
+   `supabase/migrations/`.
+3. Quando è pronto: **merge del feature branch in `main`** (fast-forward o PR).
+   La Action compila e pubblica da sola; il sito gira su **Bacheca (prod)**.
+4. Rollback: vedi `docs/ROLLBACK.md`.
 
 ⚠️ Vincoli dell'ambiente Claude Code: il token git della sessione è in sola
 lettura — per pushare serve un **PAT temporaneo** fornito in chat (scope `repo`;
@@ -184,13 +193,24 @@ della dismissione del repo separato:
 - **PWA attivata in prod**: collegati `manifest.json`/`icon.svg` nell'`<head>` e
   registrato `sw.js` (service worker *network-first* → resta aggiornato, si apre
   offline). I file erano già nel repo e vengono copiati in `dist/` dal build.
-- **Posizione tasti**: nel form i toggle "🛒 Lista Spesa / 💶 Gestione quote"
-  (con il campo delegato) spostati **sotto "Stato evento"**; nel dettaglio evento
-  i pulsanti stanno sotto i risultati del sondaggio, sopra le azioni dell'owner.
 - **Campo social** uniformato a "Link social".
 - **Strategia repo unico** (vedi *Ambienti*): repo `bacheca-dev` dismesso,
   sviluppo su feature branch nel repo prod, DB `Bacheca-Dev` tenuto come sandbox.
 - Aggiunta `docs/ROLLBACK.md`.
+
+## Cose fatte il 14-06-2026 (sera — riposizionamento tasti + cestino)
+
+Tutto **deployato in prod** (`main`):
+
+- **Posizione tasti (versione finale)**: nel form di creazione/modifica evento i
+  toggle "🛒 Lista Spesa / 💶 Gestione quote" (con il campo delegato) sono **in
+  cima, sopra il titolo "Nuovo sondaggio"**; nel dettaglio evento i pulsanti
+  "🛒 Lista Spesa / 💶 Gestione quote", quando attivi, compaiono **sopra il titolo
+  dell'evento** (prima erano sotto "Stato evento" / sotto i risultati).
+- **Svuota cestino**: nel pannello Admin → tab 🗑️ Cestino, nuovo tasto **"🗑️
+  Svuota cestino (N)"** con conferma, che elimina **definitivamente** in un colpo
+  tutti gli eventi nel cestino (`delete ... in (ids)`).
+- Repo `bacheca-dev` **eliminato** (vedi *Ambienti*); resta il DB `Bacheca-Dev`.
 
 ## Da valutare in futuro
 
