@@ -1,6 +1,6 @@
 // Service worker Bacheca — incrementa CACHE per invalidare tutto dopo un deploy importante
-const CACHE = "bacheca-v4";
-const PRECACHE = ["./", "index.html", "manifest.json", "icon.svg"];
+const CACHE = "bacheca-v5";
+const PRECACHE = ["./", "index.html", "manifest.json", "icon.svg", "maintenance.html"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
@@ -27,7 +27,9 @@ self.addEventListener("fetch", e => {
     e.respondWith(
       fetch(e.request)
         .then(r => { const cp = r.clone(); caches.open(CACHE).then(c => c.put(e.request, cp)); return r; })
-        .catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match("index.html")))
+        .catch(() => caches.match(e.request, { ignoreSearch: true })
+          .then(r => r || caches.match("index.html"))
+          .then(r => r || caches.match("maintenance.html")))
     );
     return;
   }

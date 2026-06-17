@@ -1,0 +1,35 @@
+# Configurazione Supabase CLI per Bacheca.
+# project_id = ref del progetto a cui ci si collega con `supabase link`
+# (prod "Bacheca" = divxqcadlishdfhpvixd, dev "Bacheca-Dev" = xgzmjxththubvpfwgsnu).
+project_id = "bacheca"
+
+# verify_jwt per ogni edge function (deve combaciare con il deploy attuale):
+#  - false = invocabile senza JWT utente (webhook, chiamate server/DB con segreto)
+#  - true  = richiede un JWT valido (chiamate dal client autenticato)
+[functions.parse-event]
+verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.telegram-webhook]
+verify_jwt = false
+
+[functions.discover-events]
+verify_jwt = false
+
+[functions.instagram-scan]
+verify_jwt = true
+
+[functions.instagram-results]
+verify_jwt = true
+
+[functions.event-reminders]
+verify_jwt = false
+
+# Notifiche push
+[functions.send-push]       # commenti: invocata dal client (JWT)
+verify_jwt = true
+
+[functions.broadcast-push]  # eventi/voti: invocata dal DB con x-cron-secret
+verify_jwt = false

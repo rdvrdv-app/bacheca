@@ -716,7 +716,7 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
           <div/>
           <div style={{fontSize:11,color:th.sub,fontWeight:700,textAlign:"center"}}>✈️ TG</div>
           <div style={{fontSize:11,color:th.sub,fontWeight:700,textAlign:"center"}}>📲 Push</div>
-          {[["eventi","📅 Eventi",false],["voti","🗳️ Voti",false],["commenti","💬 Commenti",true]].map(([k,l,pushOk]) => (
+          {[["eventi","📅 Eventi",true],["voti","🗳️ Voti",true],["commenti","💬 Commenti",true]].map(([k,l,pushOk]) => (
             <React.Fragment key={k}>
               <span style={{fontSize:13,color:th.text}}>{l}</span>
               <div style={{display:"flex",justifyContent:"center",opacity:tg.exists?1:0.35,pointerEvents:tg.exists?"auto":"none"}}>
@@ -733,7 +733,7 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
           ))}
         </div>
         <div style={{fontSize:11,color:th.sub,marginTop:12,lineHeight:1.5}}>
-          Le push coprono per ora i <b>commenti</b>; eventi e voti restano su Telegram. I toggle TG si attivano dopo aver collegato Telegram; i toggle Push dopo averle attivate su questo dispositivo.
+          I toggle ✈️ TG si attivano dopo aver collegato Telegram; i toggle 📲 Push dopo averle attivate su questo dispositivo. Le push per eventi e voti escludono chi ha generato l'azione.
         </div>
         {tg.err && <div style={{color:th.danger,fontSize:13,marginTop:8}}>{tg.err}</div>}
         {push.err && <div style={{color:th.danger,fontSize:13,marginTop:8}}>{push.err}</div>}
@@ -1483,7 +1483,14 @@ function EventCard({ e, th, onOpen, fav = false, onToggleFav }) {
   const badge = eventBadge(e.date);
   const restricted = Array.isArray(e.visible_to) && e.visible_to.length > 0;
   return (
-    <div onClick={() => onOpen(e)} style={{...cardSt(th),display:"flex",alignItems:"center",gap:12,cursor:"pointer",marginBottom:10}}>
+    <div onClick={() => onOpen(e)} style={{...cardSt(th),position:"relative",display:"flex",alignItems:"center",gap:12,cursor:"pointer",marginBottom:10}}>
+      {onToggleFav && (
+        <button onClick={ev => { ev.stopPropagation(); onToggleFav(e.id); }}
+          title={fav ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
+          style={{position:"absolute",top:6,right:8,background:"none",border:"none",cursor:"pointer",fontSize:18,lineHeight:1,padding:2,color:fav?th.warn:th.sub}}>
+          {fav ? "★" : "☆"}
+        </button>
+      )}
       <div style={{width:12,height:12,borderRadius:"50%",background:col,flexShrink:0,boxShadow:`0 0 6px ${col}88`}}/>
       <div style={{flex:1}}>
         <div style={{fontWeight:600,fontSize:14,color:th.text,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -1508,16 +1515,7 @@ function EventCard({ e, th, onOpen, fav = false, onToggleFav }) {
         </div>
         {e.last_edit && <div style={{fontSize:11,color:th.sub,marginTop:2,fontStyle:"italic"}}>✏️ {e.last_edit}</div>}
       </div>
-      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
-        {onToggleFav && (
-          <button onClick={ev => { ev.stopPropagation(); onToggleFav(e.id); }}
-            title={fav ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
-            style={{background:"none",border:"none",cursor:"pointer",fontSize:18,lineHeight:1,padding:0,color:fav?th.warn:th.sub}}>
-            {fav ? "★" : "☆"}
-          </button>
-        )}
-        <div style={{fontSize:11,fontWeight:600,color:col}}>{sc.label}</div>
-      </div>
+      <div style={{fontSize:11,fontWeight:600,color:col,flexShrink:0,marginTop:8}}>{sc.label}</div>
     </div>
   );
 }

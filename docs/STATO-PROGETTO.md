@@ -278,9 +278,26 @@ deploy `send-push` + impostare i secret + merge in `main`.
   `notification_prefs` (`supabase/migrations/20260617_preferenze_notifiche.sql`);
   `send-push` (v8) rispetta la preferenza push `commenti`. Aggiunto trigger
   `on_comment_created` → `notify_telegram(...,'commenti')` (no-op su dev, attivo
-  in prod) così i commenti possono notificare anche via Telegram. Stato attuale
-  dei canali: Telegram = eventi/voti/commenti; Push = commenti (eventi/voti via
-  push restano da cablare con un broadcast lato trigger).
+  in prod) così i commenti possono notificare anche via Telegram.
+- **Push anche per Eventi e Voti**: edge function **`broadcast-push`**
+  (verify_jwt=false, auth con `app_config.cron_secret`) + funzione SQL
+  `notify_push(...)` (pg_net) + trigger **`on_event_push`** su `events` (separato
+  da quelli Telegram, così non tocca il flusso esistente). Categorie: nuovo
+  evento/stato/scadenza → `eventi`; voto → `voti`. NIENTE push su eliminazioni
+  (evita lo spam dell'auto-cestino) né su eventi privati; esclude chi genera
+  l'azione. `notification_prefs.push` ora governa tutte e 3 le categorie; la
+  matrice nel profilo abilita Push per Eventi/Voti/Commenti. Migration
+  `20260617_push_eventi_voti.sql`. **Per ambiente** serve impostare
+  `app_config.functions_base_url` (su dev già fatto). Wiring verificato su dev
+  (pg_net → broadcast-push = 200).
+- **Stella preferiti** spostata in **alto a destra** della card evento (assoluta).
+- **Analisi PDF "Piano di Miglioramento"**: punti 1 (pg_cron auto-delete) e 2
+  (edge functions versionate) erano già fatti; aggiunto `supabase/config.toml`.
+  Punto 3: build con **`minify`** (esbuild target es2020) → `dist/index.html` da
+  ~207 a ~141 KB, Babel già rimosso. Punto 4: SW (`bacheca-v5`) precache di
+  `maintenance.html` e fallback finale offline su di esso. La modularizzazione
+  completa di `index.html` è stata **scartata** (contraria al design single-file,
+  ROI basso/rischio alto).
 
 ## Da valutare in futuro
 

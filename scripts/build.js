@@ -11,7 +11,7 @@ const html = readFileSync(join(root, "index.html"), "utf8");
 const m = html.match(/<script type="text\/babel"[^>]*>([\s\S]*?)<\/script>/);
 if (!m) throw new Error("Script babel non trovato in index.html");
 
-const { code } = transformSync(m[1], { loader: "jsx", target: "es2018" });
+const { code } = transformSync(m[1], { loader: "jsx", target: "es2020", minify: true });
 
 let out = html.replace(m[0], () => `<script>\n${code}\n</script>`);
 out = out.replace(/[ \t]*<script src="[^"]*babel-standalone[^"]*"><\/script>\n?/, "");
