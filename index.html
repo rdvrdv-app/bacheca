@@ -79,6 +79,42 @@ const orNull = v => { const s = (v ?? "").toString().trim(); return s === "" ? n
 // Formatta un importo in euro (it-IT, due decimali)
 const fmtEur = v => "€ " + (Number(v)||0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Data/ora compatta per i commenti (es. 17/06 14:32)
+const fmtDateTime = ts => { try { return new Date(ts).toLocaleString("it-IT", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }); } catch { return ""; } };
+
+// ── Notifiche push (Web Push / PWA) ───────────────────────────
+// Chiave PUBBLICA VAPID (è pubblica per definizione: niente segreti nel client).
+// La chiave PRIVATA vive solo come secret della edge function send-push.
+const VAPID_PUBLIC_KEY = "BLIKrma0o9iDgmBpcxmTGRXD_Fq2LydGruH_-HIiomOfyO0JIY3W4db33aSWPrHw-XFdOYbKXIqyMQQiYHTIN68";
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const urlB64ToU8 = b64 => {
+  const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+  const s = (b64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(s); const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+};
+async function enablePush(userId) {
+  if (!pushSupported()) throw new Error("Le notifiche push non sono supportate da questo browser/dispositivo.");
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") throw new Error("Permesso notifiche negato.");
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToU8(VAPID_PUBLIC_KEY) });
+  const j = sub.toJSON();
+  const { error } = await sb.from("push_subscriptions").upsert({
+    user_id: userId, endpoint: sub.endpoint,
+    p256dh: j.keys?.p256dh || null, auth: j.keys?.auth || null,
+    user_agent: (navigator.userAgent || "").slice(0, 200),
+  }, { onConflict: "endpoint" });
+  if (error) throw error;
+}
+async function disablePush() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) { await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); }
+}
+
 // ── Palette ───────────────────────────────────────────────────
 const LIGHT = {
   bg:"#FDF6F0", card:"#FFFFFF", border:"#F2E4D8", text:"#3A2E28", sub:"#A8897A",
@@ -527,6 +563,25 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
   const [saved, setSaved] = useState(false);
   const [pass,  setPass]  = useState({ new1:"", new2:"", err:"", ok:false });
   const [tg,    setTg]    = useState({ chatId:"", exists:false, saved:false, loading:true, err:"", prefs:{ eventi:true, voti:true } });
+  const [push,  setPush]  = useState({ supported:true, enabled:false, busy:false, err:"" });
+
+  useEffect(() => {
+    if (!pushSupported()) { setPush(p => ({...p, supported:false})); return; }
+    navigator.serviceWorker.ready
+      .then(reg => reg.pushManager.getSubscription())
+      .then(sub => setPush(p => ({...p, enabled: !!sub})))
+      .catch(() => {});
+  }, []);
+
+  const togglePush = async () => {
+    setPush(p => ({...p, busy:true, err:""}));
+    try {
+      if (push.enabled) { await disablePush(); setPush(p => ({...p, enabled:false, busy:false})); }
+      else { await enablePush(user.id); setPush(p => ({...p, enabled:true, busy:false})); }
+    } catch (e) {
+      setPush(p => ({...p, busy:false, err: e?.message || "Errore"}));
+    }
+  };
 
   useEffect(() => {
     sb.from("telegram_subscriptions").select("chat_id,prefs").eq("user_id", user.id).maybeSingle()
@@ -627,6 +682,28 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
               <button onClick={saveTg} style={{...primBtn(th),flex:1}}>{tg.saved ? "✅ Salvato!" : tg.exists ? "Aggiorna" : "Attiva notifiche"}</button>
               {tg.exists && <button onClick={removeTg} style={{...btnSt(th),color:th.danger,border:`1px solid ${th.danger}`,background:"transparent"}}>Disattiva</button>}
             </div>
+          </>
+        )}
+      </div>
+
+      <div style={{...cardSt(th),marginBottom:16}}>
+        <div style={sectTitle(th)}>📲 Notifiche push (questo dispositivo)</div>
+        <div style={{fontSize:12,color:th.sub,marginBottom:12,lineHeight:1.6}}>
+          Ricevi una notifica quando qualcuno commenta un evento che puoi vedere.
+          Funziona anche ad app chiusa. Su iPhone serve prima <b>aggiungere l'app alla schermata Home</b> (iOS 16.4+).
+        </div>
+        {!push.supported ? (
+          <div style={{fontSize:13,color:th.sub,padding:"8px 0"}}>Questo browser/dispositivo non supporta le notifiche push.</div>
+        ) : (
+          <>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+              <span style={{fontSize:13,color:th.text}}>{push.enabled ? "✅ Attive su questo dispositivo" : "Disattivate"}</span>
+              <button onClick={togglePush} disabled={push.busy}
+                style={{...(push.enabled ? {...btnSt(th),color:th.danger,border:`1px solid ${th.danger}`,background:"transparent"} : primBtn(th)),opacity:push.busy?0.6:1}}>
+                {push.busy ? "…" : push.enabled ? "Disattiva" : "Attiva"}
+              </button>
+            </div>
+            {push.err && <div style={{color:th.danger,fontSize:13,marginTop:8}}>{push.err}</div>}
           </>
         )}
       </div>
@@ -1832,6 +1909,87 @@ function QuoteView({ event, events, th, users = [], onBack, onSave }) {
 }
 
 // ── Event Detail ──────────────────────────────────────────────
+// ── Commenti per evento (bacheca asincrona, realtime) ─────────
+function CommentsSection({ event, th, user, profile }) {
+  const [comments, setComments] = useState([]);
+  const [text, setText]         = useState("");
+  const [loading, setLoading]   = useState(true);
+  const [posting, setPosting]   = useState(false);
+  const isAdmin = profile?.role === "admin";
+
+  const load = useCallback(async () => {
+    const { data } = await sb.from("event_comments")
+      .select("*").eq("event_id", event.id).is("deleted_at", null)
+      .order("created_at", { ascending: true });
+    setComments(data || []); setLoading(false);
+  }, [event.id]);
+
+  useEffect(() => { setLoading(true); load(); }, [load]);
+
+  // Realtime: nuovi commenti (anche degli altri) compaiono da soli
+  useEffect(() => {
+    const ch = sb.channel(`comments-${event.id}`)
+      .on("postgres_changes", { event:"*", schema:"public", table:"event_comments", filter:`event_id=eq.${event.id}` }, load)
+      .subscribe();
+    return () => { sb.removeChannel(ch); };
+  }, [event.id, load]);
+
+  const post = async () => {
+    const body = text.trim();
+    if (!body || posting) return;
+    setPosting(true);
+    const author_name = profile?.full_name || user?.email || "Utente";
+    const { data, error } = await sb.from("event_comments")
+      .insert({ event_id: event.id, user_id: user.id, author_name, body })
+      .select().single();
+    setPosting(false);
+    if (error) return;
+    setText("");
+    setComments(c => c.some(x => x.id===data.id) ? c : [...c, data]);
+    // Notifica push agli altri che possono vedere l'evento (best effort)
+    sb.functions.invoke("send-push", { body: { event_id: event.id, comment_id: data.id } }).catch(() => {});
+  };
+
+  const remove = async (c) => {
+    setComments(cs => cs.filter(x => x.id !== c.id));
+    await sb.from("event_comments").update({ deleted_at: new Date().toISOString() }).eq("id", c.id);
+  };
+
+  return (
+    <div style={{...cardSt(th),marginBottom:16}}>
+      <div style={sectTitle(th)}>💬 Commenti{comments.length>0 ? ` (${comments.length})` : ""}</div>
+      {loading ? (
+        <div style={{fontSize:13,color:th.sub,padding:"6px 0"}}>Caricamento…</div>
+      ) : comments.length===0 ? (
+        <div style={{fontSize:13,color:th.sub,padding:"6px 0"}}>Ancora nessun commento. Scrivi il primo!</div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:12}}>
+          {comments.map(c => (
+            <div key={c.id} style={{display:"flex",gap:10}}>
+              <Avatar name={c.author_name} size={32}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:13,fontWeight:600,color:th.text}}>{c.author_name}</span>
+                  <span style={{fontSize:11,color:th.sub}}>{fmtDateTime(c.created_at)}</span>
+                  {(c.user_id===user?.id || isAdmin) && (
+                    <button onClick={() => remove(c)} title="Elimina" style={{marginLeft:"auto",background:"none",border:"none",cursor:"pointer",fontSize:12,color:th.sub,padding:0}}>🗑️</button>
+                  )}
+                </div>
+                <div style={{fontSize:13,color:th.text,whiteSpace:"pre-wrap",wordBreak:"break-word",marginTop:2}}>{c.body}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Scrivi un commento…" rows={2}
+        maxLength={2000} style={{...inputSt(th),resize:"vertical",marginBottom:8,fontFamily:"inherit"}}/>
+      <button onClick={post} disabled={posting || !text.trim()} style={{...primBtn(th),width:"100%",opacity:(posting||!text.trim())?0.6:1}}>
+        {posting ? "Invio…" : "Invia commento"}
+      </button>
+    </div>
+  );
+}
+
 function EventDetail({ event, events, th, user, profile, users = [], onBack, onVote, onToast, onStatusChange, onCancelVote, onDelete, onEdit, onShopping, onQuote, onPublish }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmVote,   setConfirmVote]   = useState(null);
@@ -2019,6 +2177,8 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
           )}
         </div>
       )}
+
+      <CommentsSection event={e} th={th} user={user} profile={profile}/>
 
       {isOwner && (
         <div style={{borderTop:`1px solid ${th.border}`,paddingTop:16,display:"flex",flexDirection:"column",gap:8}}>

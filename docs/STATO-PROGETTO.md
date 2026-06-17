@@ -223,16 +223,52 @@ Tutto **deployato in prod** (`main`):
   o `pg_cron` su Supabase **oppure** uno step nel workflow notturno `backup.yml`
   (che ha già la `service_role` key) — vedi *Da valutare*.
 
+## Cose fatte il 17-06-2026 (commenti + push + auto-cestino server + edge functions versionate)
+
+Sviluppato sul branch `claude/gracious-darwin-c9cal1`; **schema/funzioni applicati a
+Bacheca-Dev**, NON ancora a prod. Promozione = applicare le 2 migration a prod +
+deploy `send-push` + impostare i secret + merge in `main`.
+
+- **💬 Commenti per evento (bacheca asincrona)**: nuova tabella `event_comments`
+  (`supabase/migrations/20260617_commenti_e_push.sql`) con RLS basate sull'helper
+  `can_see_event(uuid)` (legge i commenti chi può vedere l'evento; scrive a proprio
+  nome; cancella autore o admin — soft-delete via `deleted_at`). Realtime attivo
+  (`event_comments` aggiunta a `supabase_realtime`). UI: componente
+  `CommentsSection` nel dettaglio evento, con sottoscrizione realtime per
+  `event_id`. Visibile a tutti i partecipanti, non solo all'owner.
+- **📲 Notifiche push PWA (Web Push)**: tabella `push_subscriptions` (una riga per
+  dispositivo). Chiavi **VAPID** generate (la pubblica è in `index.html` →
+  `VAPID_PUBLIC_KEY`; la **privata è solo un secret** della edge function, mai nel
+  repo). SW (`sw.js`, ora `bacheca-v2`) gestisce `push` + `notificationclick`.
+  Profilo: card "📲 Notifiche push (questo dispositivo)" con attiva/disattiva.
+  Edge function **`send-push`** (VAPID JWT ES256, notifica *muta* senza payload
+  cifrato): invocata dal client dopo ogni commento, notifica chi può vedere
+  l'evento tranne l'autore; rimuove le iscrizioni scadute (404/410). **Deployata
+  su dev**, NON su prod. ⚠️ Richiede i secret `VAPID_PUBLIC_KEY`,
+  `VAPID_PRIVATE_JWK`, `VAPID_SUBJECT` (non impostabili via MCP: vanno messi a
+  mano). Su iPhone le push funzionano solo con app installata sulla Home (iOS 16.4+).
+- **🗑️ Auto-cestino eventi passati lato SERVER**: funzione `trash_stale_events()`
+  + job **pg_cron** `trash-stale-events-daily` (03:30 UTC), in
+  `supabase/migrations/20260617_auto_cestino_server.sql`. Supera il limite della
+  pulizia client-side (che resta come fallback innocuo). Applicato a dev.
+- **Edge functions versionate** in `supabase/functions/`: `parse-event`,
+  `delete-user`, `discover-events`, `instagram-scan`, `instagram-results`,
+  `telegram-webhook` (+ la nuova `send-push`). ⚠️ In `telegram-webhook` il bot
+  token **hardcoded** è stato sostituito con `Deno.env.get("TELEGRAM_BOT_TOKEN")`:
+  la function live storica ha ancora il token in chiaro → **ruotarlo, impostare il
+  secret e ridеployare**.
+
 ## Da valutare in futuro
 
-- **Rendere l'auto-eliminazione eventi passati realmente automatica lato server**
-  (oggi è client-side, solo su apertura di un admin): opzione A — funzione SQL +
-  `pg_cron` (richiede approvazione MCP Supabase / accesso DDL); opzione B — uno
-  step `curl PATCH` nel job notturno `backup.yml` con la `service_role` key
-  (richiede però un PAT con scope **`workflow`** per modificare i file in
-  `.github/workflows/`).
-- Copiare nel repo le edge functions esistenti (`parse-event`, `delete-user`,
-  `telegram-webhook`, `discover-events`) per averle sotto controllo versione.
+- **Promuovere in prod il lavoro del 17-06** (vedi sopra): applicare le 2 migration
+  a Bacheca (`divxqcadlishdfhpvixd`), deploy `send-push`, impostare i secret VAPID,
+  merge in `main`. Le push non sono testabili end-to-end senza un dispositivo reale
+  + i secret impostati.
+- Notifiche push **con payload** (titolo evento + estratto del commento): richiede
+  cifratura aes128gcm nel `send-push` (oggi notifica generica). Migliora la UX.
+- Notifica anche via **Telegram** sui nuovi commenti (categoria `commenti`,
+  riusando `notify_telegram` + un toggle nelle preferenze).
+
 - `EVENT_CATEGORIES` e `ITALIAN_CITIES` in `index.html`: usati solo dalla
   scoperta automatica lato server, nel client sono inutilizzati.
 - Test periodico di **restore** del backup (scaricare l'ultimo `.tar.gz.gpg`, decifrare, verificare).
@@ -240,4 +276,5 @@ Tutto **deployato in prod** (`main`):
   di `supabase/migrations/20260609_realtime_e_promemoria.sql` + deploy della
   edge function `event-reminders` con i secret `TELEGRAM_BOT_TOKEN` e `CRON_SECRET`.
 - Eventuale aggiornamento del pin di supabase-js (oggi `2.49.4` nel tag script).
-- Promemoria scadenze/eventi anche via notifiche push PWA (alternativa a Telegram).
+- Promemoria scadenze/eventi anche via notifiche push PWA ora che l'infrastruttura
+  push esiste (riusare `send-push`/`push_subscriptions`).
