@@ -36,6 +36,8 @@ begin
       'url', './?event=' || p_event_id
     )
   );
+exception when others then
+  return;  -- una notifica push non deve MAI bloccare la scrittura dell'evento
 end;
 $function$;
 

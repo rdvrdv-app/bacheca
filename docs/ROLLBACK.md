@@ -36,3 +36,19 @@ Il rollback del **codice** non tocca il **database** Supabase. Modifiche allo
 schema/ai dati vanno gestite a parte (migrazioni). Per provarle in sicurezza
 usa il progetto **Bacheca-Dev** puntandoci temporaneamente `SUPABASE_URL/KEY`
 su un branch di test, poi riporta i valori di produzione prima del merge.
+
+### Rollback rapido della release 17-06 (commenti/preferiti/push/auto-cestino)
+Le migrazioni sono **additive** (nuove tabelle/funzioni/trigger): l'unico effetto
+"attivo" sono i trigger di notifica e il cron. Per **disattivare al volo** i nuovi
+comportamenti senza perdere dati, esegui sul progetto prod (`divxqcadlishdfhpvixd`):
+```sql
+-- ferma le push automatiche su eventi/voti e la notifica Telegram sui commenti
+drop trigger if exists on_event_push   on public.events;
+drop trigger if exists on_comment_created on public.event_comments;
+-- (facoltativo) ferma l'auto-cestino server-side
+select cron.unschedule('trash-stale-events-daily');
+```
+Le tabelle `event_comments`, `push_subscriptions`, `event_favorites`,
+`notification_prefs` possono restare (innocue). Per ripristinare, riapplica le
+migrazioni `supabase/migrations/20260617_*`. Il rollback del **frontend** (Casi
+1–3 sopra) è indipendente: la vecchia UI ignora semplicemente le nuove tabelle.
