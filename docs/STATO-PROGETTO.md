@@ -257,6 +257,16 @@ deploy `send-push` + impostare i secret + merge in `main`.
   token **hardcoded** è stato sostituito con `Deno.env.get("TELEGRAM_BOT_TOKEN")`:
   la function live storica ha ancora il token in chiaro → **ruotarlo, impostare il
   secret e ridеployare**.
+- **Fix CORS `send-push`** (dev v6): l'`Access-Control-Allow-Headers` non includeva
+  `apikey`/`x-client-info` (inviati da supabase-js) → il preflight OPTIONS passava
+  ma la POST veniva bloccata dal browser (nei log comparivano solo OPTIONS).
+  Aggiunti quegli header + `Access-Control-Allow-Methods` e un log della risposta
+  del push service.
+- **⭐ Eventi preferiti**: tabella `event_favorites` (PK `user_id,event_id`, RLS
+  per utente) in `supabase/migrations/20260617_eventi_preferiti.sql`. Stella
+  toggle sulle `EventCard`; nella lista "Prossimi eventi" i preferiti sono
+  ordinati **in cima**, mantenendo l'ordine per data dentro ciascun gruppo (sort
+  stabile). Applicata a dev.
 
 ## Da valutare in futuro
 

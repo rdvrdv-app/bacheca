@@ -13,7 +13,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Content-Type":                 "application/json",
 };
 const json = (body: unknown, status = 200) =>
@@ -109,9 +110,10 @@ Deno.serve(async (req) => {
             "TTL": "86400",
           },
         });
+        console.log(`[send-push] ${origin} -> ${res.status}`);
         if (res.status === 404 || res.status === 410) stale.push(s.id);
         else if (res.ok) sent++;
-      } catch { /* best effort per-endpoint */ }
+      } catch (e) { console.log(`[send-push] errore invio: ${e?.message ?? e}`); }
     }));
 
     if (stale.length) await sb.from("push_subscriptions").delete().in("id", stale);
