@@ -2882,6 +2882,26 @@ function App() {
     }
   };
 
+  // Deep-link: notifica push cliccata → apri la scheda dell'evento.
+  // ?event=<id> all'avvio (finestra nuova) o messaggio dal service worker (app già aperta).
+  const [pendingEventId, setPendingEventId] = useState(() => {
+    try { return new URLSearchParams(location.search).get("event") || null; } catch { return null; }
+  });
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMsg = ev => { if (ev.data?.type === "open-event" && ev.data.eventId) setPendingEventId(ev.data.eventId); };
+    navigator.serviceWorker.addEventListener("message", onMsg);
+    return () => navigator.serviceWorker.removeEventListener("message", onMsg);
+  }, []);
+  useEffect(() => {
+    if (!pendingEventId || !events.length) return;
+    const ev = events.find(x => x.id === pendingEventId);
+    if (ev) {
+      setSelEvent(ev); setView("event"); setPendingEventId(null);
+      try { history.replaceState(null, "", location.pathname); } catch {}
+    }
+  }, [pendingEventId, events]);
+
   const loadEvents = useCallback(async () => {
     if (!user || !profileLoaded) return;
     const { data, error } = await sb.from("events").select("*").is("deleted_at", null).order("date", { ascending: true, nullsFirst: false });

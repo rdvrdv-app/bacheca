@@ -1,5 +1,5 @@
 // Service worker Bacheca — incrementa CACHE per invalidare tutto dopo un deploy importante
-const CACHE = "bacheca-v2";
+const CACHE = "bacheca-v3";
 const PRECACHE = ["./", "index.html", "manifest.json", "icon.svg"];
 
 self.addEventListener("install", e => {
@@ -50,19 +50,23 @@ self.addEventListener("fetch", e => {
 self.addEventListener("push", e => {
   let title = "Bacheca";
   let body  = "💬 Nuovo commento su un evento";
-  try { if (e.data) { const d = e.data.json(); title = d.title || title; body = d.body || body; } } catch {}
+  let data  = { url: "./" };
+  try { if (e.data) { const d = e.data.json(); title = d.title || title; body = d.body || body; data = { url: d.url || "./", eventId: d.eventId || "" }; } } catch {}
   e.waitUntil(self.registration.showNotification(title, {
-    body, icon: "icon.svg", badge: "icon.svg", tag: "bacheca-commenti", data: { url: "./" },
+    body, icon: "icon.svg", badge: "icon.svg", tag: "bacheca-commenti", data,
   }));
 });
 
 self.addEventListener("notificationclick", e => {
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || "./";
-  e.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
-      for (const c of list) { if ("focus" in c) return c.focus(); }
-      if (self.clients.openWindow) return self.clients.openWindow(url);
-    })
-  );
+  const data = e.notification.data || {};
+  const url  = data.url || "./";
+  const eid  = data.eventId || "";
+  e.waitUntil((async () => {
+    const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of list) {
+      if ("focus" in c) { await c.focus(); if (eid) c.postMessage({ type: "open-event", eventId: eid }); return; }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(url);
+  })());
 });
