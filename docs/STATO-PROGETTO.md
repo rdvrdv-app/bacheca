@@ -228,7 +228,14 @@ Tutto **deployato in prod** (`main`):
 Sviluppato sul branch `claude/gracious-darwin-c9cal1`; **schema/funzioni applicati a
 Bacheca-Dev** e poi **promossi in prod il 17-06-2026** (5 migrazioni `20260617_*`
 applicate a Bacheca, `send-push`+`broadcast-push` deployate, `functions_base_url`
-impostato, secret VAPID configurati). Pubblicazione frontend = merge in `main`.
+impostato, secret VAPID configurati). Frontend pubblicato con **fast-forward in
+`main`** (deploy Pages verde).
+
+**Pulizia branch (17-06-2026):** dopo la promozione sono stati **eliminati tutti
+i feature branch remoti** ora obsoleti — `claude/gracious-darwin-c9cal1` (questa
+release, già in `main`), `claude/sleepy-babbage-njshr3`, e i vecchi branch dev
+pre-unificazione `claude/cool-brown-g0f1j5` e `claude/loving-hypatia-6gf955`. In
+prod resta **solo `main`**; i prossimi lavori partiranno da nuovi feature branch.
 
 - **💬 Commenti per evento (bacheca asincrona)**: nuova tabella `event_comments`
   (`supabase/migrations/20260617_commenti_e_push.sql`) con RLS basate sull'helper
