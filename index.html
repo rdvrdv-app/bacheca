@@ -562,8 +562,22 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
   const [name,  setName]  = useState(profile?.full_name || "");
   const [saved, setSaved] = useState(false);
   const [pass,  setPass]  = useState({ new1:"", new2:"", err:"", ok:false });
-  const [tg,    setTg]    = useState({ chatId:"", exists:false, saved:false, loading:true, err:"", prefs:{ eventi:true, voti:true } });
+  const [tg,    setTg]    = useState({ chatId:"", exists:false, saved:false, loading:true, err:"", prefs:{ eventi:true, voti:true, commenti:true } });
   const [push,  setPush]  = useState({ supported:true, enabled:false, busy:false, err:"" });
+  const [pushPrefs, setPushPrefs] = useState({ eventi:true, voti:true, commenti:true });
+
+  useEffect(() => {
+    sb.from("notification_prefs").select("push").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => { if (data?.push) setPushPrefs(p => ({ ...p, ...data.push })); });
+  }, [user.id]);
+
+  const togglePushPref = async k => {
+    const next = { ...pushPrefs, [k]: pushPrefs[k] === false };
+    setPushPrefs(next);
+    const { error } = await sb.from("notification_prefs")
+      .upsert({ user_id: user.id, push: next, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+    if (error) { setPushPrefs(pushPrefs); setPush(p => ({...p, err:"Errore preferenze push"})); }
+  };
 
   useEffect(() => {
     if (!pushSupported()) { setPush(p => ({...p, supported:false})); return; }
@@ -657,55 +671,72 @@ function ProfileView({ th, user, profile, onBack, onLogout }) {
       </div>
 
       <div style={{...cardSt(th),marginBottom:16}}>
-        <div style={sectTitle(th)}>🔔 Notifiche Telegram</div>
-        <div style={{fontSize:12,color:th.sub,marginBottom:12,lineHeight:1.6}}>
-          Per ricevere notifiche quando viene creato o modificato un evento:<br/><br/>
-          <span style={{display:"block",marginBottom:4}}>1️⃣ Apri Telegram e cerca <b>@bacheca_notifiche_bot</b></span>
-          <span style={{display:"block",marginBottom:4}}>2️⃣ Clicca <b>START</b> — il bot ti risponderà con il tuo <b>Chat ID</b></span>
-          <span style={{display:"block",marginBottom:4}}>3️⃣ Copia quel numero e incollalo qui sotto</span>
+        <div style={sectTitle(th)}>🔔 Notifiche</div>
+        <div style={{fontSize:12,color:th.sub,marginBottom:14,lineHeight:1.6}}>
+          Scegli per ogni tipo di avviso su quale canale riceverlo.
         </div>
-        {tg.loading ? <div style={{fontSize:13,color:th.sub,padding:"10px 0"}}>Caricamento...</div> : (
-          <>
-            <label style={labelSt(th)}>Chat ID Telegram</label>
-            <input value={tg.chatId} onChange={e => setTg(p => ({...p, chatId:e.target.value}))} placeholder="Es. 123456789" style={inputSt(th)}/>
-            <div style={{marginBottom:12}}>
-              <div style={{...labelSt(th),marginBottom:8}}>Quali notifiche ricevere</div>
-              {[["eventi","📅 Eventi (nuovi, modifiche, cancellazioni)"],["voti","🗳️ Voti (aggiunti e ritirati)"]].map(([k,l]) => (
-                <div key={k} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:8}}>
-                  <span style={{fontSize:13,color:th.text}}>{l}</span>
-                  <Toggle value={tg.prefs[k] !== false} onChange={() => togglePref(k)} th={th}/>
-                </div>
-              ))}
-            </div>
-            {tg.err && <div style={{color:th.danger,fontSize:13,marginBottom:8}}>{tg.err}</div>}
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={saveTg} style={{...primBtn(th),flex:1}}>{tg.saved ? "✅ Salvato!" : tg.exists ? "Aggiorna" : "Attiva notifiche"}</button>
-              {tg.exists && <button onClick={removeTg} style={{...btnSt(th),color:th.danger,border:`1px solid ${th.danger}`,background:"transparent"}}>Disattiva</button>}
-            </div>
-          </>
-        )}
-      </div>
 
-      <div style={{...cardSt(th),marginBottom:16}}>
-        <div style={sectTitle(th)}>📲 Notifiche push (questo dispositivo)</div>
-        <div style={{fontSize:12,color:th.sub,marginBottom:12,lineHeight:1.6}}>
-          Ricevi una notifica quando qualcuno commenta un evento che puoi vedere.
-          Funziona anche ad app chiusa. Su iPhone serve prima <b>aggiungere l'app alla schermata Home</b> (iOS 16.4+).
+        {/* Canale Telegram: collegamento */}
+        <div style={{marginBottom:12}}>
+          <div style={{...labelSt(th),marginBottom:6}}>✈️ Telegram</div>
+          {tg.loading ? <div style={{fontSize:13,color:th.sub}}>Caricamento…</div> : tg.exists ? (
+            <div style={{fontSize:12,color:th.sub,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <span>✅ Collegato (Chat ID {tg.chatId})</span>
+              <button onClick={removeTg} style={{...btnSt(th),fontSize:12,padding:"4px 10px",color:th.danger,border:`1px solid ${th.danger}`,background:"transparent"}}>Scollega</button>
+            </div>
+          ) : (
+            <>
+              <div style={{fontSize:12,color:th.sub,marginBottom:8,lineHeight:1.6}}>
+                Apri <b>@bacheca_notifiche_bot</b> su Telegram, premi <b>START</b>, copia il <b>Chat ID</b> e incollalo qui.
+              </div>
+              <input value={tg.chatId} onChange={e => setTg(p => ({...p, chatId:e.target.value}))} placeholder="Es. 123456789" style={inputSt(th)}/>
+              <button onClick={saveTg} style={{...primBtn(th),width:"100%"}}>{tg.saved ? "✅ Collegato!" : "Collega Telegram"}</button>
+            </>
+          )}
         </div>
-        {!push.supported ? (
-          <div style={{fontSize:13,color:th.sub,padding:"8px 0"}}>Questo browser/dispositivo non supporta le notifiche push.</div>
-        ) : (
-          <>
+
+        {/* Canale Push: attivazione sul dispositivo */}
+        <div style={{marginBottom:14}}>
+          <div style={{...labelSt(th),marginBottom:6}}>📲 Push (questo dispositivo)</div>
+          {!push.supported ? (
+            <div style={{fontSize:12,color:th.sub}}>Non supportate da questo browser/dispositivo.</div>
+          ) : (
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-              <span style={{fontSize:13,color:th.text}}>{push.enabled ? "✅ Attive su questo dispositivo" : "Disattivate"}</span>
+              <span style={{fontSize:12,color:th.sub}}>{push.enabled ? "✅ Attive su questo dispositivo" : "Disattivate · su iPhone installa prima l'app sulla Home (iOS 16.4+)"}</span>
               <button onClick={togglePush} disabled={push.busy}
-                style={{...(push.enabled ? {...btnSt(th),color:th.danger,border:`1px solid ${th.danger}`,background:"transparent"} : primBtn(th)),opacity:push.busy?0.6:1}}>
+                style={{...(push.enabled ? {...btnSt(th),fontSize:12,padding:"4px 10px",color:th.danger,border:`1px solid ${th.danger}`,background:"transparent"} : {...primBtn(th),fontSize:12,padding:"6px 12px"}),opacity:push.busy?0.6:1}}>
                 {push.busy ? "…" : push.enabled ? "Disattiva" : "Attiva"}
               </button>
             </div>
-            {push.err && <div style={{color:th.danger,fontSize:13,marginTop:8}}>{push.err}</div>}
-          </>
-        )}
+          )}
+        </div>
+
+        {/* Matrice tipo × canale */}
+        <div style={{borderTop:`1px solid ${th.border}`,paddingTop:12,display:"grid",gridTemplateColumns:"1fr auto auto",gap:"10px 16px",alignItems:"center"}}>
+          <div/>
+          <div style={{fontSize:11,color:th.sub,fontWeight:700,textAlign:"center"}}>✈️ TG</div>
+          <div style={{fontSize:11,color:th.sub,fontWeight:700,textAlign:"center"}}>📲 Push</div>
+          {[["eventi","📅 Eventi",false],["voti","🗳️ Voti",false],["commenti","💬 Commenti",true]].map(([k,l,pushOk]) => (
+            <React.Fragment key={k}>
+              <span style={{fontSize:13,color:th.text}}>{l}</span>
+              <div style={{display:"flex",justifyContent:"center",opacity:tg.exists?1:0.35,pointerEvents:tg.exists?"auto":"none"}}>
+                <Toggle value={tg.exists && tg.prefs[k] !== false} onChange={() => togglePref(k)} th={th}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"center"}}>
+                {pushOk ? (
+                  <div style={{opacity:push.enabled?1:0.35,pointerEvents:push.enabled?"auto":"none"}}>
+                    <Toggle value={push.enabled && pushPrefs[k] !== false} onChange={() => togglePushPref(k)} th={th}/>
+                  </div>
+                ) : <span style={{fontSize:13,color:th.sub}}>—</span>}
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{fontSize:11,color:th.sub,marginTop:12,lineHeight:1.5}}>
+          Le push coprono per ora i <b>commenti</b>; eventi e voti restano su Telegram. I toggle TG si attivano dopo aver collegato Telegram; i toggle Push dopo averle attivate su questo dispositivo.
+        </div>
+        {tg.err && <div style={{color:th.danger,fontSize:13,marginTop:8}}>{tg.err}</div>}
+        {push.err && <div style={{color:th.danger,fontSize:13,marginTop:8}}>{push.err}</div>}
       </div>
 
       <div style={{...cardSt(th),marginBottom:16}}>

@@ -267,6 +267,20 @@ deploy `send-push` + impostare i secret + merge in `main`.
   toggle sulle `EventCard`; nella lista "Prossimi eventi" i preferiti sono
   ordinati **in cima**, mantenendo l'ordine per data dentro ciascun gruppo (sort
   stabile). Applicata a dev.
+- **Push con payload + deep-link** (send-push v7): notifica con titolo evento +
+  "autore: commento", cifrata aes128gcm; clic → apre la scheda evento
+  (`?event=<id>` o postMessage del SW). SW `bacheca-v3`.
+- **Fix "arriva solo la prima notifica"** (SW `bacheca-v4`): il `tag` fisso
+  faceva sostituire silenziosamente le notifiche successive. Ora `tag` per-evento
+  + `renotify:true`.
+- **Pannello notifiche unificato (tipo × canale)** nel profilo: matrice
+  Eventi/Voti/Commenti × Telegram/Push. Preferenze push per-utente in tabella
+  `notification_prefs` (`supabase/migrations/20260617_preferenze_notifiche.sql`);
+  `send-push` (v8) rispetta la preferenza push `commenti`. Aggiunto trigger
+  `on_comment_created` → `notify_telegram(...,'commenti')` (no-op su dev, attivo
+  in prod) così i commenti possono notificare anche via Telegram. Stato attuale
+  dei canali: Telegram = eventi/voti/commenti; Push = commenti (eventi/voti via
+  push restano da cablare con un broadcast lato trigger).
 
 ## Da valutare in futuro
 

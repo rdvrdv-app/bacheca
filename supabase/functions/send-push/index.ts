@@ -134,7 +134,14 @@ Deno.serve(async (req) => {
       subsQuery = subsQuery.in("user_id", allowed as string[]);
     }
     const { data: subs } = await subsQuery;
-    const targets = (subs ?? []).filter(s => s.user_id !== authorId);
+    let targets = (subs ?? []).filter(s => s.user_id !== authorId);
+    // Rispetta la preferenza push "commenti" per utente (assente = attivo)
+    if (targets.length) {
+      const ids = Array.from(new Set(targets.map(t => t.user_id)));
+      const { data: prefs } = await sb.from("notification_prefs").select("user_id, push").in("user_id", ids);
+      const off = new Set((prefs ?? []).filter(p => p.push && p.push.commenti === false).map(p => p.user_id));
+      targets = targets.filter(t => !off.has(t.user_id));
+    }
     console.log(`[send-push] event=${event_id} author=${authorId} targets=${targets.length}`);
     if (!targets.length) return json({ sent: 0 });
 

@@ -1,5 +1,5 @@
 // Service worker Bacheca — incrementa CACHE per invalidare tutto dopo un deploy importante
-const CACHE = "bacheca-v3";
+const CACHE = "bacheca-v4";
 const PRECACHE = ["./", "index.html", "manifest.json", "icon.svg"];
 
 self.addEventListener("install", e => {
@@ -53,7 +53,9 @@ self.addEventListener("push", e => {
   let data  = { url: "./" };
   try { if (e.data) { const d = e.data.json(); title = d.title || title; body = d.body || body; data = { url: d.url || "./", eventId: d.eventId || "" }; } } catch {}
   e.waitUntil(self.registration.showNotification(title, {
-    body, icon: "icon.svg", badge: "icon.svg", tag: "bacheca-commenti", data,
+    body, icon: "icon.svg", badge: "icon.svg",
+    tag: data.eventId ? `bacheca-${data.eventId}` : "bacheca-commenti",
+    renotify: true, data,
   }));
 });
 
