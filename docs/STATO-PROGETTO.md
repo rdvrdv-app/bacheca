@@ -7,11 +7,13 @@ Documento di contesto per riprendere il lavoro in una nuova chat.
 - **Rimossa la funzione "Scopri"** (scoperta automatica eventi da Instagram): via
   dal client `DiscoverySection`, `VenueEditor`, il tab admin e i metadati
   `discovery_meta`/`source:"agent"`; rimosse dal repo le edge function
-  `discover-events`, `instagram-scan`, `instagram-results`; disattivato il cron di
-  polling su **dev**. La coda **✅ Approva** resta (serve alle bozze manuali).
-  ⚠️ Residui backend non ancora rimossi: le stesse edge function **deployate** su
-  Supabase (dev+prod), il cron su **prod**, e le tabelle `venues`/`discovery_runs`
-  (+ chiavi `app_config`: `discovery_config`, `saved_searches`, `cron_secret`).
+  `discover-events`, `instagram-scan`, `instagram-results`. La coda **✅ Approva**
+  resta (serve alle bozze manuali). Backend ripulito su **dev+prod**: cron di
+  polling disattivato, tabelle `venues`/`discovery_runs` **droppate** e chiavi
+  `app_config` (`discovery_config`, `saved_searches`, `cron_secret`) rimosse
+  (migrazione `supabase/migrations/20260701_rimuove_scopri.sql`).
+  ⚠️ Unico residuo: le edge function **deployate** su Supabase (dev+prod) restano
+  (non c'è tool MCP per cancellarle) ma sono ormai irraggiungibili e inerti.
 - **Più immagini per evento**: nuova colonna `events.images` (jsonb, array di URL);
   la prima è la copertina ed è duplicata in `flyer_url` per retrocompatibilità.
   Migrazione `supabase/migrations/20260701_eventi_immagini_multiple.sql`
