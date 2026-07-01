@@ -106,7 +106,5 @@ Sviluppato sul branch `claude/cool-brown-g0f1j5` (che punta a Bacheca-Dev):
 - SQL applicato: `supabase/migrations/20260610_notifiche_telegram_prefs.sql`.
 
 ## Note
-- `EVENT_CATEGORIES` e `ITALIAN_CITIES` in `index.html` sono ancora inutilizzati nel
-  client: predisposti per la scoperta automatica eventi (`discovery_meta`, `source:"agent"`).
 - Le edge function esistenti (`parse-event`, `delete-user`) non sono versionate in questo
   repo: varrebbe la pena copiarle in `supabase/functions/` per averle sotto controllo versione.

@@ -137,12 +137,6 @@ const MONTHS = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio"
 const DAYS   = ["Lun","Mar","Mer","Gio","Ven","Sab","Dom"];
 const AVATAR_COLORS = ["#7EB8D4","#85C9A8","#F6C97A","#E8907A","#A8C4D4","#F4A97A"];
 
-// Categorie evento per la scoperta automatica ("Tutti" = ricerca su tutte)
-const EVENT_CATEGORIES = ["Tutti","Pranzo","Cena","Disco","DJ set","Sagra","Escursioni","Viaggi organizzati","Concerti"];
-
-// Capoluoghi di provincia italiani (menu a scorrimento)
-const ITALIAN_CITIES = ["Agrigento","Alessandria","Ancona","Aosta","Arezzo","Ascoli Piceno","Asti","Avellino","Bari","Barletta","Belluno","Benevento","Bergamo","Biella","Bologna","Bolzano","Brescia","Brindisi","Cagliari","Caltanissetta","Campobasso","Caserta","Catania","Catanzaro","Chieti","Como","Cosenza","Cremona","Crotone","Cuneo","Enna","Fermo","Ferrara","Firenze","Foggia","Forlì","Frosinone","Genova","Gorizia","Grosseto","Imperia","Isernia","La Spezia","L'Aquila","Latina","Lecce","Lecco","Livorno","Lodi","Lucca","Macerata","Mantova","Massa","Matera","Messina","Milano","Modena","Monza","Napoli","Novara","Nuoro","Oristano","Padova","Palermo","Parma","Pavia","Perugia","Pesaro","Pescara","Piacenza","Pisa","Pistoia","Pordenone","Potenza","Prato","Ragusa","Ravenna","Reggio Calabria","Reggio Emilia","Rieti","Rimini","Roma","Rovigo","Salerno","Sassari","Savona","Siena","Siracusa","Sondrio","Taranto","Teramo","Terni","Torino","Trapani","Trento","Treviso","Trieste","Udine","Varese","Venezia","Verbania","Vercelli","Verona","Vibo Valentia","Vicenza","Viterbo"];
-
 // ── Helpers ───────────────────────────────────────────────────
 const getDaysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
 // Offset della prima cella con settimana che inizia di lunedì (Lun=0 … Dom=6)
@@ -1581,7 +1575,7 @@ function EventDetail({ event, events, th, user, profile, users = [], onBack, onV
 
       {canManagePending && e.pending_approval && (
         <div style={{...cardSt(th),marginBottom:14,border:`1.5px solid ${th.warn}`,background:th.warn+"14"}}>
-          <div style={{fontSize:13,color:th.text,fontWeight:600,marginBottom:6}}>🔍 Bozza / in pre-approvazione {e.source==="agent" && "· 🤖 trovato automaticamente"}</div>
+          <div style={{fontSize:13,color:th.text,fontWeight:600,marginBottom:6}}>🔍 Bozza / in pre-approvazione</div>
           <div style={{fontSize:12,color:th.sub,marginBottom:10}}>Bozza: visibile solo a te e agli admin. Pubblicala per renderla visibile {restricted ? "alle persone selezionate" : "a tutti"}.</div>
           <div style={{display:"flex",gap:8}}>
             <button onClick={() => onPublish(e.id, true)} style={{...primBtn(th),flex:1,background:th.ok}}>✅ Pubblica</button>
@@ -2465,7 +2459,7 @@ function App() {
       gestione_quote: !!e.gestione_quote, quote: e.quote||[], quote_delegato: e.quote_delegato||null,
       quota_num: e.quota_num!=null ? Number(e.quota_num) : 0,
       quota_tot: e.quota_tot!=null ? Number(e.quota_tot) : 0,
-      pending_approval: !!e.pending_approval, source: e.source || "manual",
+      pending_approval: !!e.pending_approval,
       visible_to: Array.isArray(e.visible_to) ? e.visible_to : [],
       flyer_url: e.flyer_url || null,
       images: Array.isArray(e.images) && e.images.length ? e.images : (e.flyer_url ? [e.flyer_url] : []),
@@ -2576,7 +2570,7 @@ function App() {
       status:form.status, multi_select:multiSel, lista_spesa:form.listaSpesa,
       gestione_quote:form.gestioneQuote, quote:[], quote_delegato:orNull(form.quoteDelegato),
       options:opts, participants:[], votes, shopping_list:[], created_by:user.id,
-      visible_to: visibleTo, pending_approval: form.publishNow === false, source:"manual",
+      visible_to: visibleTo, pending_approval: form.publishNow === false,
     }).select().single();
     setSaving(false);
     if (error) return showToast("❌ Errore salvataggio: " + error.message);

@@ -1,6 +1,24 @@
-# Bacheca — Stato del progetto (14-06-2026)
+# Bacheca — Stato del progetto (01-07-2026)
 
 Documento di contesto per riprendere il lavoro in una nuova chat.
+
+## Ultime modifiche (01-07-2026)
+
+- **Rimossa la funzione "Scopri"** (scoperta automatica eventi da Instagram): via
+  dal client `DiscoverySection`, `VenueEditor`, il tab admin e i metadati
+  `discovery_meta`/`source:"agent"`; rimosse dal repo le edge function
+  `discover-events`, `instagram-scan`, `instagram-results`; disattivato il cron di
+  polling su **dev**. La coda **✅ Approva** resta (serve alle bozze manuali).
+  ⚠️ Residui backend non ancora rimossi: le stesse edge function **deployate** su
+  Supabase (dev+prod), il cron su **prod**, e le tabelle `venues`/`discovery_runs`
+  (+ chiavi `app_config`: `discovery_config`, `saved_searches`, `cron_secret`).
+- **Più immagini per evento**: nuova colonna `events.images` (jsonb, array di URL);
+  la prima è la copertina ed è duplicata in `flyer_url` per retrocompatibilità.
+  Migrazione `supabase/migrations/20260701_eventi_immagini_multiple.sql`
+  **applicata a dev e prod**. Nel form si caricano/rimuovono più immagini e si
+  sceglie la copertina; la scheda evento mostra la galleria.
+- **Visibilità "Solo selezionati"**: il creatore è aggiunto in automatico ed è
+  **non rimovibile** (bloccato in UI e forzato al salvataggio).
 
 ## Cos'è
 
@@ -9,7 +27,7 @@ multi-giorno e con accompagnatori), calendario, ferie condivise, lista della
 spesa per evento, gestione quote con anticipi, notifiche Telegram.
 
 - **Sito**: https://rdvrdv-app.github.io/bacheca/ (GitHub Pages, repo `rdvrdv-app/bacheca`)
-- **Stack**: React 18 da CDN, app in un **unico `index.html`** (~2.400 righe, JSX);
+- **Stack**: React 18 da CDN, app in un **unico `index.html`** (~2.900 righe, JSX);
   in produzione il JSX è **precompilato** da una GitHub Action con esbuild
   (`scripts/build.js` → `dist/`), quindi niente Babel nel browser. È anche una
   **PWA** installabile (`manifest.json`, `sw.js`, `icon.svg`).
@@ -48,7 +66,9 @@ spesa per evento, gestione quote con anticipi, notifiche Telegram.
 - `.github/workflows/backup.yml` — backup notturno (02:00 UTC) del DB **prod**:
   tabelle events, profiles, activity_log, telegram_subscriptions, app_config,
   **ferie** + **locandine** da `flyer_url`; cifrato GPG e committato su
-  `rdvrdv-app/bacheca-backups` (ultimi 30); notifica Telegram se fallisce
+  `rdvrdv-app/bacheca-backups` (ultimi 30); notifica Telegram se fallisce.
+  ⚠️ Il backup scarica solo la copertina (`flyer_url`): le immagini extra in
+  `events.images` non sono ancora incluse (da estendere se serve)
 - `manifest.json`, `sw.js`, `icon.svg` — PWA
 - `maintenance.html` — pagina di cortesia
 - `supabase/migrations/` — SQL documentati (vedi intestazioni: alcuni GIÀ applicati)
@@ -67,8 +87,7 @@ gli autenticati), `save_quotes` (**solo creatore evento, delegato o admin** —
 verificato su prod e dev), `is_name_taken`, `is_admin`.
 
 Edge functions deployate (prod e dev): `parse-event` (AI: compila il form da
-testo/locandina), `delete-user`, `telegram-webhook`, `discover-events`
-(scoperta automatica eventi → coda approvazione admin). ⚠️ Non sono versionate
+testo/locandina), `delete-user`, `telegram-webhook`. ⚠️ Non sono versionate
 nel repo: varrebbe la pena copiarle in `supabase/functions/`.
 
 Trigger Postgres su `events`: `trigger_notify_new_event` e
@@ -260,8 +279,7 @@ prod resta **solo `main`**; i prossimi lavori partiranno da nuovi feature branch
   `supabase/migrations/20260617_auto_cestino_server.sql`. Supera il limite della
   pulizia client-side (che resta come fallback innocuo). Applicato a dev.
 - **Edge functions versionate** in `supabase/functions/`: `parse-event`,
-  `delete-user`, `discover-events`, `instagram-scan`, `instagram-results`,
-  `telegram-webhook` (+ la nuova `send-push`). ⚠️ In `telegram-webhook` il bot
+  `delete-user`, `telegram-webhook` (+ `send-push`). ⚠️ In `telegram-webhook` il bot
   token **hardcoded** è stato sostituito con `Deno.env.get("TELEGRAM_BOT_TOKEN")`:
   la function live storica ha ancora il token in chiaro → **ruotarlo, impostare il
   secret e ridеployare**.
@@ -318,8 +336,6 @@ prod resta **solo `main`**; i prossimi lavori partiranno da nuovi feature branch
 - Notifica anche via **Telegram** sui nuovi commenti (categoria `commenti`,
   riusando `notify_telegram` + un toggle nelle preferenze).
 
-- `EVENT_CATEGORIES` e `ITALIAN_CITIES` in `index.html`: usati solo dalla
-  scoperta automatica lato server, nel client sono inutilizzati.
 - Test periodico di **restore** del backup (scaricare l'ultimo `.tar.gz.gpg`, decifrare, verificare).
 - Attivazione (eventuale) dei promemoria giornalieri Telegram: vedi sezione 2
   di `supabase/migrations/20260609_realtime_e_promemoria.sql` + deploy della
