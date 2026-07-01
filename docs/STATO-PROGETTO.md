@@ -12,11 +12,9 @@ Documento di contesto per riprendere il lavoro in una nuova chat.
   polling disattivato, tabelle `venues`/`discovery_runs` **droppate** e chiavi
   `app_config` (`discovery_config`, `saved_searches`, `cron_secret`) rimosse
   (migrazione `supabase/migrations/20260701_rimuove_scopri.sql`).
-  Edge function **deployate** rimosse a mano da **prod** (il connettore MCP non
-  ha un tool di delete). ⚠️ Su **dev** restano ancora `instagram-scan` e
-  `instagram-results` (ACTIVE): da eliminare a mano — Dashboard → Edge Functions
-  o `supabase functions delete instagram-scan instagram-results`. Sono comunque
-  inerti (nessun cron/client le invoca).
+  Edge function **deployate** rimosse a mano da **dev e prod** (il connettore MCP
+  non ha un tool di delete). ✅ Nessun residuo: Scopri è rimosso completamente da
+  client, repo, cron, tabelle DB ed edge function su entrambi gli ambienti.
 - **Più immagini per evento**: nuova colonna `events.images` (jsonb, array di URL);
   la prima è la copertina ed è duplicata in `flyer_url` per retrocompatibilità.
   Migrazione `supabase/migrations/20260701_eventi_immagini_multiple.sql`
