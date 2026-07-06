@@ -1,6 +1,42 @@
-# Bacheca — Stato del progetto (01-07-2026)
+# Bacheca — Stato del progetto (06-07-2026)
 
 Documento di contesto per riprendere il lavoro in una nuova chat.
+
+## Import sagre Abruzzo (06-07-2026)
+
+- **58 "sagre" abruzzesi importate come eventi/sondaggi** su **dev e prod**
+  (`public.events`). Tutte con `status='pending'` (🟡 In valutazione),
+  `pending_approval=false` (pubblicate, non bozze), `created_by` = Roberto
+  (admin) e **`source='sagre-abruzzo-2026'`** (tag per ritrovarle/rollback).
+  Periodo coperto: 06-07-2026 → 31-08-2026. Nessuna migration: è solo dato,
+  inserito via MCP Supabase (`execute_sql`).
+- **Mapping usato** (replica la logica del client `handleCreate`):
+  - **Multi-giorno (43)**: `end_date` valorizzata, `multi_select=true`,
+    `options` = un'opzione per giorno (label `ddd gg-mm-aaaa`, es.
+    `lun 06-07-2026`) **+ `Tutto il periodo`**, con `votes` inizializzati a `[]`
+    per ogni opzione (stessa forma di `buildMultiDayOptions`, così i voti
+    restano coerenti se l'evento viene poi modificato dall'app).
+  - **Giorno singolo (15)**: `end_date=NULL`, `multi_select=false`, opzione
+    unica `["Partecipo"]`.
+  - `address` = `"Località (Provincia)"`; `notes` = prodotto tipico + dettagli;
+    `organizer` lasciato NULL.
+- **Locandine NON aggiunte (scelta)**: per le edizioni **2026** di queste sagre
+  locali le locandine ufficiali non sono reperibili/verificabili adesso (fonti
+  ufficiali ferme al 2025 o che rispondono **403** al fetch; immagini social con
+  URL firmati a scadenza; il fetcher non scarica immagini). Deciso di **non**
+  inserire URL non verificati in prod. Alternative aperte: caricare i file forniti
+  dall'utente nel bucket `event-flyers`, oppure mettere il link ufficiale nel
+  campo *social*.
+- ⚠️ **Effetto collaterale in PROD**: l'insert massivo ha fatto scattare il
+  trigger `on_event_created` → `notify_telegram(...,'eventi')` **per ogni riga**
+  → ~**58 notifiche Telegram × 4 iscritti** inviate al gruppo. Le **push NON**
+  sono partite (in prod manca `app_config.cron_secret` → `notify_push` esce
+  subito). In **dev** nessuna notifica (`notify_telegram` è un no-op).
+  **Lezione per import massivi futuri**: inserire con `pending_approval=true`
+  (o disabilitare temporaneamente `on_event_created`) e pubblicare dopo, per
+  evitare lo spam di notifiche.
+- **Rollback**: `delete from public.events where source='sagre-abruzzo-2026';`
+  (eseguibile su dev e/o prod tramite MCP Supabase).
 
 ## Ultime modifiche (01-07-2026)
 
