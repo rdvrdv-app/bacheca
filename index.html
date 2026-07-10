@@ -8,18 +8,22 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
   <link rel="preconnect" href="https://divxqcadlishdfhpvixd.supabase.co" crossorigin/>
   <link rel="manifest" href="manifest.json"/>
-  <meta name="theme-color" content="#7EB8D4"/>
+  <meta name="theme-color" content="#4FB3E8"/>
   <link rel="icon" href="icon.svg" type="image/svg+xml"/>
   <link rel="apple-touch-icon" href="icon.svg"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    body { font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    h1, h2, h3 { font-family: 'Baloo 2', 'Outfit', sans-serif; }
     input, textarea, button, select { font-family: inherit; font-size: 16px; }
-    button:focus-visible { outline: 2px solid #7EB8D4; outline-offset: 2px; }
+    button:focus-visible { outline: 2px solid #3AA5E0; outline-offset: 2px; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
@@ -117,12 +121,20 @@ async function disablePush() {
 
 // ── Palette ───────────────────────────────────────────────────
 const LIGHT = {
-  bg:"#FDF6F0", card:"#FFFFFF", border:"#F2E4D8", text:"#3A2E28", sub:"#A8897A",
-  input:"#FBF0E8", accent:"#7EB8D4", ok:"#85C9A8", warn:"#F6C97A", danger:"#E8907A",
+  bg:"#FDF4ED", card:"rgba(255,255,255,.60)", border:"rgba(255,255,255,.85)", text:"#2C2320", sub:"#9A7E6F",
+  input:"rgba(255,255,255,.85)", inputBorder:"rgba(0,0,0,.05)", accent:"#3AA5E0", ok:"#2FBF8F", warn:"#F5A94B", danger:"#E9603F",
+  grad:"linear-gradient(135deg,#4FB3E8,#45CF9B)",
+  gradShadow:"0 6px 16px rgba(79,179,232,.35)",
+  cardShadow:"0 8px 24px rgba(120,90,70,.10)",
+  aurora:"radial-gradient(600px 400px at 85% -10%,#BFE3F8 0%,transparent 60%),radial-gradient(500px 380px at -15% 25%,#FFD9C7 0%,transparent 60%),radial-gradient(520px 420px at 70% 105%,#C9F1DC 0%,transparent 55%),#FDF4ED",
 };
 const DARK = {
-  bg:"#0D1B2A", card:"#152535", border:"#1E3448", text:"#E8F0F7", sub:"#7A9BB5",
-  input:"#1A2E40", accent:"#7EB8D4", ok:"#85C9A8", warn:"#F6C97A", danger:"#E8907A",
+  bg:"#101B2B", card:"rgba(255,255,255,.06)", border:"rgba(255,255,255,.12)", text:"#EDF4FA", sub:"#93AEC4",
+  input:"rgba(255,255,255,.08)", inputBorder:"rgba(255,255,255,.12)", accent:"#63C7FF", ok:"#3FD9A0", warn:"#FFB35C", danger:"#FF8E6B",
+  grad:"linear-gradient(135deg,#4FB3E8,#45CF9B)",
+  gradShadow:"0 6px 18px rgba(79,179,232,.40)",
+  cardShadow:"0 8px 24px rgba(0,0,0,.25)",
+  aurora:"radial-gradient(600px 400px at 85% -10%,rgba(79,179,232,.28) 0%,transparent 60%),radial-gradient(500px 380px at -15% 25%,rgba(242,131,107,.20) 0%,transparent 60%),radial-gradient(520px 420px at 70% 105%,rgba(69,207,155,.18) 0%,transparent 55%),#101B2B",
 };
 
 const STATUS_CONFIG = {
@@ -241,14 +253,14 @@ const canSeeEvent = (e, user, profile) => {
 };
 
 // ── Style helpers ─────────────────────────────────────────────
-const cardSt    = th => ({ background: th.card, borderRadius: 14, padding: 14, border: `1px solid ${th.border}` });
-const inputSt   = th => ({ width: "100%", background: th.input, border: `1px solid ${th.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 16, color: th.text, marginBottom: 12, outline: "none" });
-const labelSt   = th => ({ display: "block", fontSize: 12, color: th.sub, marginBottom: 4, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" });
-const btnSt     = th => ({ background: th.input, border: `1px solid ${th.border}`, borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: th.text });
-const primBtn   = th => ({ background: th.accent, border: "none", borderRadius: 10, padding: "10px 16px", cursor: "pointer", fontSize: 13, color: "#fff", fontWeight: 600 });
-const backBtn   = th => ({ background: th.accent, border: "none", borderRadius: 12, padding: "10px 20px", cursor: "pointer", fontSize: 14, color: "#fff", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 18, boxShadow: `0 2px 8px ${th.accent}44` });
-const dangerBtn = th => ({ width: "100%", padding: "10px 16px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#fff", border: "none", background: th.danger });
-const sectTitle = th => ({ fontSize:12, color:th.sub, marginBottom:10, fontWeight:600, textTransform:"uppercase", letterSpacing:1 });
+const cardSt    = th => ({ background: th.card, borderRadius: 20, padding: 16, border: `1px solid ${th.border}`, backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)", boxShadow: th.cardShadow });
+const inputSt   = th => ({ width: "100%", background: th.input, border: `1px solid ${th.inputBorder}`, borderRadius: 14, padding: "11px 14px", fontSize: 16, color: th.text, marginBottom: 12, outline: "none" });
+const labelSt   = th => ({ display: "block", fontSize: 11, color: th.sub, marginBottom: 5, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" });
+const btnSt     = th => ({ background: th.input, border: `1px solid ${th.inputBorder}`, borderRadius: 14, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: th.text });
+const primBtn   = th => ({ background: th.grad, border: "none", borderRadius: 999, padding: "11px 18px", cursor: "pointer", fontSize: 13, color: "#fff", fontWeight: 800, boxShadow: th.gradShadow });
+const backBtn   = th => ({ background: th.card, border: `1px solid ${th.border}`, backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderRadius: 999, padding: "10px 20px", cursor: "pointer", fontSize: 14, color: th.text, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 18, boxShadow: th.cardShadow });
+const dangerBtn = th => ({ width: "100%", padding: "11px 16px", borderRadius: 999, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#fff", border: "none", background: th.danger });
+const sectTitle = th => ({ fontSize:12, color:th.sub, marginBottom:10, fontWeight:700, textTransform:"uppercase", letterSpacing:1 });
 
 // ── Shared UI ─────────────────────────────────────────────────
 function DeadlineBadge({ deadline, th }) {
@@ -351,7 +363,7 @@ function PasswordRecoveryView({ th, onDone }) {
   };
 
   return (
-    <div style={{minHeight:"100vh",background:th.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{minHeight:"100vh",background:th.aurora,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{width:"100%",maxWidth:380}}>
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{fontSize:40,marginBottom:8}}>🔑</div>
@@ -417,7 +429,7 @@ function LoginView({ th, onGoRegister, onRecovery }) {
   const back = () => { setStep("login"); setErr(""); setOtp(""); };
 
   if (step === "forgot_email") return (
-    <div style={{minHeight:"100vh",background:th.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{minHeight:"100vh",background:th.aurora,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{width:"100%",maxWidth:380}}>
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{fontSize:40,marginBottom:8}}>🔑</div>
@@ -438,7 +450,7 @@ function LoginView({ th, onGoRegister, onRecovery }) {
   );
 
   if (step === "forgot_otp") return (
-    <div style={{minHeight:"100vh",background:th.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{minHeight:"100vh",background:th.aurora,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{width:"100%",maxWidth:380}}>
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{fontSize:40,marginBottom:8}}>📧</div>
@@ -461,7 +473,7 @@ function LoginView({ th, onGoRegister, onRecovery }) {
   );
 
   return (
-    <div style={{minHeight:"100vh",background:th.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{minHeight:"100vh",background:th.aurora,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{width:"100%",maxWidth:380}}>
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{fontSize:40,marginBottom:8}}>📅</div>
@@ -512,7 +524,7 @@ function RegisterView({ th, onGoLogin }) {
   };
 
   if (ok) return (
-    <div style={{minHeight:"100vh",background:th.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{minHeight:"100vh",background:th.aurora,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{...cardSt(th),maxWidth:380,width:"100%",textAlign:"center"}}>
         <div style={{fontSize:48,marginBottom:12}}>✅</div>
         <h2 style={{color:th.text,marginBottom:8}}>Registrazione completata!</h2>
@@ -523,7 +535,7 @@ function RegisterView({ th, onGoLogin }) {
   );
 
   return (
-    <div style={{minHeight:"100vh",background:th.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{minHeight:"100vh",background:th.aurora,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{width:"100%",maxWidth:380}}>
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{fontSize:40,marginBottom:8}}>📅</div>
@@ -2681,7 +2693,7 @@ function App() {
   const openEvent    = e => { setSelEvent(e); setView("event"); };
 
   if (auth === "loading") return (
-    <div style={{minHeight:"100vh",background:th.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div style={{minHeight:"100vh",background:th.aurora,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{fontSize:40}}>📅</div>
     </div>
   );
@@ -2807,10 +2819,10 @@ function App() {
 
   return (
     <div onTouchStart={onPtrStart} onTouchMove={onPtrMove} onTouchEnd={onPtrEnd}
-      style={{background:th.bg,minHeight:"100vh",maxWidth:430,margin:"0 auto",position:"relative"}}>
-      <div style={{background:th.card,borderBottom:`1px solid ${th.border}`,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
+      style={{background:th.aurora,minHeight:"100vh",maxWidth:430,margin:"0 auto",position:"relative"}}>
+      <div style={{background:th.card,backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",borderBottom:`1px solid ${th.border}`,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
         <div onClick={() => { setView("calendar"); setTab("cal"); }} style={{cursor:"pointer"}}>
-          <div style={{fontWeight:700,fontSize:17,color:th.text}}>📅 Bacheca</div>
+          <div style={{fontFamily:"'Baloo 2','Outfit',sans-serif",fontWeight:700,fontSize:19,color:th.text}}>📅 Bacheca</div>
           <div style={{fontSize:11,color:th.sub}}>{MONTHS[calDate.m]} {calDate.y}</div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -2842,7 +2854,7 @@ function App() {
       )}
 
       {showNav && (
-        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:th.card,borderTop:`1px solid ${th.border}`,display:"flex",padding:"10px 0 14px",zIndex:10}}>
+        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:th.card,backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",borderTop:`1px solid ${th.border}`,display:"flex",padding:"10px 0 14px",zIndex:10}}>
           {[["cal","🗓️","Calendario"],["new","➕","Crea"],["ferie","🌴","Ferie"],["search","🔍","Cerca"]].map(([t, ic, lb]) => (
             <button key={t} onClick={() => { setTab(t); setView("calendar"); }}
               style={{flex:1,border:"none",background:"transparent",cursor:"pointer",color:tab===t&&view==="calendar"?th.accent:th.sub,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
