@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Icona app: calendario su sfondo azzurro. Contenuto entro la zona sicura (80%) per uso maskable -->
+  <rect width="512" height="512" rx="96" fill="#7EB8D4"/>
+  <rect x="116" y="148" width="280" height="236" rx="28" fill="#FFFFFF"/>
+  <rect x="116" y="148" width="280" height="64" rx="28" fill="#E8907A"/>
+  <rect x="116" y="184" width="280" height="28" fill="#E8907A"/>
+  <rect x="164" y="112" width="28" height="64" rx="14" fill="#3A2E28"/>
+  <rect x="320" y="112" width="28" height="64" rx="14" fill="#3A2E28"/>
+  <rect x="152" y="244" width="52" height="44" rx="10" fill="#F2E4D8"/>
+  <rect x="230" y="244" width="52" height="44" rx="10" fill="#F2E4D8"/>
+  <rect x="308" y="244" width="52" height="44" rx="10" fill="#85C9A8"/>
+  <rect x="152" y="312" width="52" height="44" rx="10" fill="#F2E4D8"/>
+  <rect x="230" y="312" width="52" height="44" rx="10" fill="#F2E4D8"/>
+  <rect x="308" y="312" width="52" height="44" rx="10" fill="#F2E4D8"/>
+</svg>
